@@ -22,7 +22,7 @@
 <body>
 
 <h1>TIMER STATION</h1>
-<button id="audio-init">🔊 1. SOUND AKTIVIEREN & TESTEN</button>
+<button id="audio-init">🔊 START: SOUND & WACHHALTER AKTIVIEREN</button>
 
 <div class="container" id="app"></div>
 
@@ -35,17 +35,24 @@
     let audioCtx = null;
     let sireneActive = false;
     let running = {};
+    let wakeLockSource = null;
 
-    // 1. Audio-Initialisierung
+    // 1. Audio & Wachhalter-Trick
     document.getElementById('audio-init').addEventListener('click', function() {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const o = audioCtx.createOscillator();
-        o.connect(audioCtx.destination);
-        o.start(); o.stop(audioCtx.currentTime + 0.1);
+        
+        // Trick: Unhörbarer Loop, damit Android den Prozess nicht killt
+        const buffer = audioCtx.createBuffer(1, 1, 22050);
+        wakeLockSource = audioCtx.createBufferSource();
+        wakeLockSource.buffer = buffer;
+        wakeLockSource.loop = true;
+        wakeLockSource.connect(audioCtx.destination);
+        wakeLockSource.start(0);
+
         this.style.display = "none";
+        alert("Wachhalter aktiv! Timer läuft jetzt auch im Standby.");
     });
 
-    // Sirene (Wiu-Wiu)
     async function startSirene() {
         if (!audioCtx) return;
         sireneActive = true;
@@ -71,7 +78,7 @@
         document.getElementById('alarm-overlay').style.display = "none";
     }
 
-    // Web Worker für Hintergrund-Zählung
+    // Web Worker (Zählt separat vom Browser-Fenster)
     const workerCode = `
         let t = {};
         self.onmessage = function(e) {
@@ -143,7 +150,7 @@
 
     function editTime(i) {
         if (running[i]) return;
-        let m = prompt("Neue Minuten eingeben:", Math.floor(timers[i].initial / 60));
+        let m = prompt("Minuten eingeben:", Math.floor(timers[i].initial / 60));
         if (m !== null && m !== "") {
             let val = parseInt(m) * 60;
             if (!isNaN(val)) {
