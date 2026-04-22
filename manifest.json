@@ -1,7 +1,7 @@
 {
   "name": "Timer Station Pro",
   "short_name": "TimerPro",
-  "start_url": "timer.html",
+  "start_url": "index.html",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#32d74b",
