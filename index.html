@@ -53,7 +53,7 @@
 <body>
 
 <h1>TIMER STATION</h1>
-<button id="audio-init">🔊 SOUND AKTIVIEREN</button>
+<button id="audio-init">🔊 ALARM-SYSTEM SCHARF SCHALTEN</button>
 
 <div class="container" id="app"></div>
 
@@ -62,42 +62,44 @@
     let alarmActive = false;
     let running = {};
 
-    // Initialisierung und Hintergrund-Wachhalter
+    // Aktiviert den Audio-Kontext (muss einmal pro Sitzung geklickt werden)
     document.getElementById('audio-init').addEventListener('click', function() {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        // Erzeugt einen unhörbaren Loop, um Audio aktiv zu halten
-        const silence = audioCtx.createGain();
-        silence.gain.value = 0;
-        silence.connect(audioCtx.destination);
+        // Erzeugt ein minimales Rauschen im Hintergrund, damit der Kanal offen bleibt
+        const buffer = audioCtx.createBuffer(1, 1, 22050);
+        const node = audioCtx.createBufferSource();
+        node.buffer = buffer;
+        node.loop = true;
+        node.connect(audioCtx.destination);
+        node.start(0);
+        
         this.style.display = "none";
     });
 
-    async function playHeavyAlarm() {
-        if (!audioCtx) return;
-        alarmActive = true;
+    // Die Sirene: Extrem laut und wiederholt sich ohne Ende
+    function playExtremeAlarm() {
+        if (!audioCtx || !alarmActive) return;
 
-        // Sirene startet
-        while (alarmActive) {
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            
-            osc.type = 'sawtooth'; 
-            osc.frequency.setValueAtTime(1100, audioCtx.currentTime);
-            osc.frequency.exponentialRampToValueAtTime(440, audioCtx.currentTime + 0.3);
-            
-            gain.gain.setValueAtTime(1.0, audioCtx.currentTime);
-            gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.35);
-            
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
-            
-            osc.start();
-            osc.stop(audioCtx.currentTime + 0.4);
-            
-            if ('vibrate' in navigator) navigator.vibrate(500);
-            // Kurze Pause zwischen den Signaltönen
-            await new Promise(r => setTimeout(r, 500));
-        }
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        
+        osc.type = 'sawtooth'; // Schrillste Wellenform
+        osc.frequency.setValueAtTime(1300, audioCtx.currentTime);
+        osc.frequency.linearRampToValueAtTime(700, audioCtx.currentTime + 0.2);
+        
+        gain.gain.setValueAtTime(1.0, audioCtx.currentTime); // Volle Pulle
+        gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.25);
+        
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.3);
+
+        if ('vibrate' in navigator) navigator.vibrate([300, 100, 300]);
+
+        // Rekursiver Aufruf: Spielt den nächsten Ton in 300ms, solange alarmActive wahr ist
+        setTimeout(playExtremeAlarm, 300);
     }
 
     const workerCode = `
@@ -135,13 +137,14 @@
                 timers[idx].time = timers[idx].initial;
                 render();
                 
-                playHeavyAlarm();
+                // Alarm aktivieren und Endlos-Funktion starten
+                alarmActive = true;
+                playExtremeAlarm();
                 
-                // Extrem kurzer Text für das Fenster
+                // Alert Fenster (stoppt den Sound-Loop erst bei Klick)
                 setTimeout(() => {
                     alert(timers[idx].name + " FERTIG"); 
-                    alarmActive = false;
-                    if ('vibrate' in navigator) navigator.vibrate(0);
+                    alarmActive = false; // Beendet die Sirene
                 }, 50);
             }
             render();
@@ -175,7 +178,7 @@
             stopTimer(i);
             timers[i].time = timers[i].initial;
         } else {
-            if (!audioCtx) { alert("Bitte erst 'SOUND AKTIVIEREN' drücken!"); return; }
+            if (!audioCtx) { alert("Bitte erst oben auf den Sound-Button klicken!"); return; }
             running[i] = true;
             timerWorker.postMessage({ index: i, cmd: 'start' });
         }
