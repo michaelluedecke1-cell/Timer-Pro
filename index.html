@@ -20,6 +20,8 @@
             display: flex; flex-direction: column; align-items: center;
         }
 
+        h1 { font-size: 24px; margin-bottom: 10px; }
+
         .container {
             display: grid; grid-template-columns: repeat(2, 1fr);
             gap: 12px; width: 100%; max-width: 400px;
@@ -32,12 +34,13 @@
 
         .timer-box.running { border-color: var(--accent); }
 
-        .label { color: #94a3b8; font-size: 12px; margin-bottom: 5px; font-weight: bold; cursor: pointer; }
-        .time-display { font-size: 28px; font-family: monospace; font-weight: bold; color: var(--accent); margin-bottom: 10px; }
+        /* Klickbare Bereiche markieren */
+        .label { color: #94a3b8; font-size: 12px; margin-bottom: 5px; font-weight: bold; cursor: pointer; text-decoration: underline dotted; }
+        .time-display { font-size: 28px; font-family: monospace; font-weight: bold; color: var(--accent); margin-bottom: 10px; cursor: pointer; }
 
         .btn { 
             background: var(--accent); border: none; color: #fff; 
-            padding: 10px; border-radius: 10px; width: 100%; 
+            padding: 12px; border-radius: 10px; width: 100%; 
             font-size: 14px; font-weight: bold; cursor: pointer;
         }
 
@@ -45,7 +48,7 @@
 
         #audio-init {
             background: #f59e0b; color: white; border: none;
-            padding: 12px; border-radius: 10px; margin-bottom: 15px;
+            padding: 15px; border-radius: 10px; margin-bottom: 15px;
             font-weight: bold; width: 100%; max-width: 400px; cursor: pointer;
         }
     </style>
@@ -53,7 +56,7 @@
 <body>
 
 <h1>TIMER STATION</h1>
-<button id="audio-init">🔊 ALARM-SYSTEM SCHARF SCHALTEN</button>
+<button id="audio-init">🔊 ALARM STARTBEREIT MACHEN</button>
 
 <div class="container" id="app"></div>
 
@@ -62,43 +65,33 @@
     let alarmActive = false;
     let running = {};
 
-    // Aktiviert den Audio-Kontext (muss einmal pro Sitzung geklickt werden)
     document.getElementById('audio-init').addEventListener('click', function() {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        // Erzeugt ein minimales Rauschen im Hintergrund, damit der Kanal offen bleibt
         const buffer = audioCtx.createBuffer(1, 1, 22050);
         const node = audioCtx.createBufferSource();
         node.buffer = buffer;
         node.loop = true;
         node.connect(audioCtx.destination);
         node.start(0);
-        
         this.style.display = "none";
     });
 
-    // Die Sirene: Extrem laut und wiederholt sich ohne Ende
     function playExtremeAlarm() {
         if (!audioCtx || !alarmActive) return;
 
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
-        
-        osc.type = 'sawtooth'; // Schrillste Wellenform
+        osc.type = 'sawtooth';
         osc.frequency.setValueAtTime(1300, audioCtx.currentTime);
         osc.frequency.linearRampToValueAtTime(700, audioCtx.currentTime + 0.2);
-        
-        gain.gain.setValueAtTime(1.0, audioCtx.currentTime); // Volle Pulle
+        gain.gain.setValueAtTime(1.0, audioCtx.currentTime);
         gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.25);
-        
         osc.connect(gain);
         gain.connect(audioCtx.destination);
-        
         osc.start();
         osc.stop(audioCtx.currentTime + 0.3);
 
         if ('vibrate' in navigator) navigator.vibrate([300, 100, 300]);
-
-        // Rekursiver Aufruf: Spielt den nächsten Ton in 300ms, solange alarmActive wahr ist
         setTimeout(playExtremeAlarm, 300);
     }
 
@@ -136,15 +129,11 @@
                 stopTimer(idx);
                 timers[idx].time = timers[idx].initial;
                 render();
-                
-                // Alarm aktivieren und Endlos-Funktion starten
                 alarmActive = true;
                 playExtremeAlarm();
-                
-                // Alert Fenster (stoppt den Sound-Loop erst bei Klick)
                 setTimeout(() => {
                     alert(timers[idx].name + " FERTIG"); 
-                    alarmActive = false; // Beendet die Sirene
+                    alarmActive = false;
                 }, 50);
             }
             render();
@@ -160,7 +149,7 @@
             div.className = `timer-box ${isRunning ? 'running' : ''}`;
             div.innerHTML = `
                 <div class="label" onclick="editName(${i})">${t.name}</div>
-                <div class="time-display">${format(t.time)}</div>
+                <div class="time-display" onclick="editTime(${i})">${format(t.time)}</div>
                 <button class="btn ${isRunning ? 'stop' : ''}" onclick="toggle(${i})">
                     ${isRunning ? 'STOP' : 'START'}
                 </button>
@@ -178,7 +167,7 @@
             stopTimer(i);
             timers[i].time = timers[i].initial;
         } else {
-            if (!audioCtx) { alert("Bitte erst oben auf den Sound-Button klicken!"); return; }
+            if (!audioCtx) { alert("Bitte erst oben SOUND AKTIVIEREN!"); return; }
             running[i] = true;
             timerWorker.postMessage({ index: i, cmd: 'start' });
         }
@@ -192,23 +181,29 @@
     }
 
     function editTime(i) {
-        let m = prompt("Minuten:", timers[i].initial / 60);
-        if (m) {
-            timers[i].initial = parseInt(m) * 60;
-            timers[i].time = timers[i].initial;
-            localStorage.setItem('savedTimers', JSON.stringify(timers));
-            render();
+        if (running[i]) return; // Nicht während der Timer läuft
+        let m = prompt("Minuten eingeben für " + timers[i].name + ":", timers[i].initial / 60);
+        if (m !== null && m !== "") {
+            let val = parseInt(m) * 60;
+            if (!isNaN(val)) {
+                timers[i].initial = val;
+                timers[i].time = val;
+                save();
+                render();
+            }
         }
     }
 
     function editName(i) {
-        let n = prompt("Name:", timers[i].name);
+        let n = prompt("Name ändern:", timers[i].name);
         if (n) { 
             timers[i].name = n; 
-            localStorage.setItem('savedTimers', JSON.stringify(timers));
+            save(); 
             render(); 
         }
     }
+
+    function save() { localStorage.setItem('savedTimers', JSON.stringify(timers)); }
 
     render();
 </script>
