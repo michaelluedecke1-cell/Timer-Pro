@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Timer Station Sirene</title>
+    <title>Timer Station</title>
     <style>
         :root {
             --bg-color: #0f172a;
@@ -43,100 +43,93 @@
 
         .btn.stop { background: var(--danger); }
 
-        /* Custom Alert Overlay */
-        #alert-overlay {
+        /* Vollbild Alarm-Overlay */
+        #alarm-screen {
             display: none;
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(15, 23, 42, 0.95);
-            z-index: 9999; flex-direction: column; justify-content: center; align-items: center;
+            background: #7f1d1d; z-index: 9999;
+            flex-direction: column; justify-content: center; align-items: center;
         }
 
-        #alert-box {
-            background: var(--card-bg); padding: 40px; border-radius: 20px;
-            border: 4px solid var(--danger); text-align: center;
-        }
+        #alarm-screen h2 { font-size: 40px; margin-bottom: 30px; animation: blink 0.5s infinite; }
 
-        #alert-name { font-size: 32px; font-weight: bold; margin-bottom: 20px; color: #fff; }
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
 
         #audio-init {
             background: #f59e0b; color: white; border: none; padding: 15px; border-radius: 12px; margin-bottom: 20px;
             font-weight: bold; width: 100%; max-width: 400px; cursor: pointer;
-            box-shadow: 0 0 15px rgba(245, 158, 11, 0.5);
         }
     </style>
 </head>
 <body>
 
 <h1>TIMER STATION</h1>
-<button id="audio-init">⚠️ SCHRITTE 1: SOUND AKTIVIEREN</button>
+<button id="audio-init">🔊 SIRENE TESTEN & AKTIVIEREN</button>
 
 <div class="container" id="app"></div>
 
-<div id="alert-overlay">
-    <div id="alert-box">
-        <div id="alert-name">TIMER FERTIG</div>
-        <button class="btn stop" style="padding: 20px; font-size: 18px;" onclick="stopSirene()">SIRENE STOPPEN</button>
-    </div>
+<div id="alarm-screen">
+    <h2 id="active-timer-name">FERTIG</h2>
+    <button class="btn" style="width: 250px; height: 80px; font-size: 24px; background: white; color: black;" onclick="stopSirene()">AUSSCHALTEN</button>
 </div>
 
 <script>
     let audioCtx = null;
-    let sireneInterval = null;
+    let sireneActive = false;
     let running = {};
 
-    // 1. Audio-Initialisierung durch Klick
+    // Audio-Start mit "Android-Wachhalter"
     document.getElementById('audio-init').addEventListener('click', function() {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         
-        // Test-Ton um sicherzugehen
-        const osc = audioCtx.createOscillator();
-        osc.connect(audioCtx.destination);
-        osc.start(); osc.stop(audioCtx.currentTime + 0.1);
-        
+        // Erzeugt ein unhörbares Signal, damit der Kanal offen bleibt
+        const buffer = audioCtx.createBuffer(1, 1, 22050);
+        const source = audioCtx.createBufferSource();
+        source.buffer = buffer;
+        source.loop = true;
+        source.connect(audioCtx.destination);
+        source.start(0);
+
         this.style.display = "none";
     });
 
     // Die Sirene: Schriller Wiu-Wiu Ton ohne Ende
-    function startSirene() {
+    async function startSirene() {
         if (!audioCtx) return;
+        sireneActive = true;
         if (audioCtx.state === 'suspended') audioCtx.resume();
 
-        if (sireneInterval) clearInterval(sireneInterval);
-
-        sireneInterval = setInterval(() => {
+        while (sireneActive) {
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
             
-            osc.type = 'sawtooth'; // Schriller Sägezahn-Sound
+            osc.type = 'sawtooth';
+            // Frequenz-Wechsel für Sirene
+            let time = audioCtx.currentTime;
+            osc.frequency.setValueAtTime(900, time);
+            osc.frequency.exponentialRampToValueAtTime(1600, time + 0.2);
             
-            // Frequenz-Wechsel für Sirenen-Effekt
-            let now = audioCtx.currentTime;
-            osc.frequency.setValueAtTime(800, now);
-            osc.frequency.exponentialRampToValueAtTime(1600, now + 0.2);
-            
-            gain.gain.setValueAtTime(1.0, now);
-            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+            gain.gain.setValueAtTime(1.0, time);
+            gain.gain.exponentialRampToValueAtTime(0.01, time + 0.3);
             
             osc.connect(gain);
             gain.connect(audioCtx.destination);
             
             osc.start();
-            osc.stop(now + 0.3);
+            osc.stop(time + 0.3);
             
             if ('vibrate' in navigator) navigator.vibrate(200);
-        }, 300);
+            await new Promise(r => setTimeout(r, 250));
+        }
     }
 
     function stopSirene() {
-        if (sireneInterval) {
-            clearInterval(sireneInterval);
-            sireneInterval = null;
-        }
-        document.getElementById('alert-overlay').style.display = "none";
+        sireneActive = false;
+        document.getElementById('alarm-screen').style.display = "none";
         if ('vibrate' in navigator) navigator.vibrate(0);
     }
 
-    // Worker für Hintergrund-Zählung
+    // Web Worker für Hintergrund-Zählung
     const workerCode = `
         let timers = {};
         self.onmessage = function(e) {
@@ -152,16 +145,13 @@
     const workerBlob = new Blob([workerCode], { type: 'application/javascript' });
     const timerWorker = new Worker(URL.createObjectURL(workerBlob));
 
-    const defaultTimers = [
-        { name: "Timer 1", time: 60, initial: 60 },
-        { name: "Timer 2", time: 300, initial: 300 },
-        { name: "Timer 3", time: 600, initial: 600 },
-        { name: "Timer 4", time: 900, initial: 900 },
-        { name: "Timer 5", time: 1200, initial: 1200 },
-        { name: "Timer 6", time: 1800, initial: 1800 }
+    const defaultData = [
+        { name: "Timer 1", time: 60, initial: 60 }, { name: "Timer 2", time: 300, initial: 300 },
+        { name: "Timer 3", time: 600, initial: 600 }, { name: "Timer 4", time: 900, initial: 900 },
+        { name: "Timer 5", time: 1200, initial: 1200 }, { name: "Timer 6", time: 1800, initial: 1800 }
     ];
 
-    let timers = JSON.parse(localStorage.getItem('myTimers')) || defaultTimers;
+    let timers = JSON.parse(localStorage.getItem('myTimers')) || defaultData;
 
     timerWorker.onmessage = function(e) {
         const idx = e.data.index;
@@ -172,9 +162,8 @@
                 timers[idx].time = timers[idx].initial;
                 render();
                 
-                // Alarm Fenster & Sirene
-                document.getElementById('alert-name').innerText = timers[idx].name;
-                document.getElementById('alert-overlay').style.display = "flex";
+                document.getElementById('active-timer-name').innerText = timers[idx].name;
+                document.getElementById('alarm-screen').style.display = "flex";
                 startSirene();
             }
             render();
@@ -188,46 +177,24 @@
             const isRunning = running[i];
             const div = document.createElement('div');
             div.className = `timer-box ${isRunning ? 'running' : ''}`;
-            div.innerHTML = `
-                <div class="label" onclick="editName(${i})">${t.name}</div>
-                <div class="time-display" onclick="editTime(${i})">${format(t.time)}</div>
-                <button class="btn ${isRunning ? 'stop' : ''}" onclick="toggle(${i})">
-                    ${isRunning ? 'STOP' : 'START'}
-                </button>
-            `;
+            div.innerHTML = `<div class="label" onclick="editName(${i})">${t.name}</div><div class="time-display" onclick="editTime(${i})">${format(t.time)}</div><button class="btn ${isRunning ? 'stop' : ''}" onclick="toggle(${i})">${isRunning ? 'STOP' : 'START'}</button>`;
             app.appendChild(div);
         });
     }
 
-    function format(s) {
-        return `${Math.floor(s/60)}:${(s%60).toString().padStart(2, '0')}`;
-    }
+    function format(s) { return `${Math.floor(s/60)}:${(s%60).toString().padStart(2, '0')}`; }
 
     function toggle(i) {
-        if (running[i]) {
-            stopTimer(i);
-            timers[i].time = timers[i].initial;
-        } else {
-            if (!audioCtx) { alert("Bitte erst 'SOUND AKTIVIEREN' klicken!"); return; }
-            running[i] = true;
-            timerWorker.postMessage({ index: i, cmd: 'start' });
-        }
+        if (running[i]) { stopTimer(i); timers[i].time = timers[i].initial; }
+        else { if (!audioCtx) { alert("SOUND AKTIVIEREN!"); return; } running[i] = true; timerWorker.postMessage({ index: i, cmd: 'start' }); }
         render();
     }
 
-    function stopTimer(i) {
-        running[i] = false;
-        timerWorker.postMessage({ index: i, cmd: 'stop' });
-        render();
-    }
+    function stopTimer(i) { running[i] = false; timerWorker.postMessage({ index: i, cmd: 'stop' }); render(); }
 
     function editTime(i) {
         let m = prompt("Minuten:", timers[i].initial / 60);
-        if (m) {
-            timers[i].initial = parseInt(m) * 60;
-            timers[i].time = timers[i].initial;
-            save(); render();
-        }
+        if (m) { timers[i].initial = parseInt(m) * 60; timers[i].time = timers[i].initial; save(); render(); }
     }
 
     function editName(i) {
@@ -236,7 +203,6 @@
     }
 
     function save() { localStorage.setItem('myTimers', JSON.stringify(timers)); }
-
     render();
 </script>
 </body>
