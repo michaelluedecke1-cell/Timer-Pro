@@ -58,6 +58,7 @@
             margin-bottom: 8px; 
             text-transform: uppercase;
             font-weight: bold;
+            cursor: pointer;
         }
 
         .time-display { 
@@ -66,6 +67,7 @@
             font-weight: bold; 
             color: var(--accent); 
             margin-bottom: 15px; 
+            cursor: pointer;
         }
 
         .btn { 
@@ -91,7 +93,8 @@
             margin-bottom: 20px;
             font-weight: bold;
             cursor: pointer;
-            box-shadow: 0 4px 10px rgba(34, 197, 94, 0.4);
+            width: 100%;
+            max-width: 400px;
         }
     </style>
 </head>
@@ -107,6 +110,7 @@
     let alarmOsc = null;
     let alarmGain = null;
 
+    // Audio-Initialisierung
     document.getElementById('audio-init').addEventListener('click', function() {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         this.style.display = 'none';
@@ -114,17 +118,15 @@
 
     function startInfiniteAlarm() {
         if (!audioCtx) return;
-        
-        // Falls schon ein Alarm läuft, erst stoppen
         stopInfiniteAlarm();
 
         alarmOsc = audioCtx.createOscillator();
         alarmGain = audioCtx.createGain();
         
-        alarmOsc.type = 'triangle'; // Etwas angenehmerer aber lauter Sound
-        alarmOsc.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5
+        alarmOsc.type = 'triangle';
+        alarmOsc.frequency.setValueAtTime(523.25, audioCtx.currentTime);
         
-        // Sirenen-Effekt (auf und ab)
+        // Intensiver Sirenen-Effekt
         alarmOsc.frequency.linearRampToValueAtTime(880, audioCtx.currentTime + 0.5);
         alarmOsc.frequency.setTargetAtTime(523.25, audioCtx.currentTime + 0.5, 0.5);
 
@@ -132,11 +134,8 @@
         
         alarmOsc.connect(alarmGain);
         alarmGain.connect(audioCtx.destination);
-        
-        alarmOsc.loop = true; // Funktioniert bei Oszillatoren nicht direkt, daher manueller Stop
         alarmOsc.start();
         
-        // Vibration in Schleife
         if ('vibrate' in navigator) {
             navigator.vibrate([500, 300, 500, 300, 500]);
         }
@@ -144,14 +143,14 @@
 
     function stopInfiniteAlarm() {
         if (alarmOsc) {
-            alarmOsc.stop();
+            try { alarmOsc.stop(); } catch(e) {}
             alarmOsc.disconnect();
             alarmOsc = null;
         }
         if ('vibrate' in navigator) navigator.vibrate(0);
     }
 
-    // Web Worker für Hintergrund-Präzision
+    // Web Worker Setup
     const workerCode = `
         let intervals = {};
         self.onmessage = function(e) {
@@ -186,15 +185,19 @@
         if (tick && timers[index].time > 0) {
             timers[index].time--;
             if (timers[index].time === 0) {
+                // Timer stoppen
                 stopTimer(index);
-                render();
                 
-                // Alarm starten
+                // Alarm anwerfen
                 startInfiniteAlarm();
                 
-                // Alert blockiert das Skript -> Code danach wird erst nach Klick ausgeführt
+                // Reset auf Startzeit VOR dem Alert
+                timers[index].time = timers[index].initial;
+                render();
+                
+                // Alert blockiert, bis OK gedrückt wird
                 setTimeout(() => {
-                    alert("⏰ ZEIT ABGELAUFEN: " + timers[index].name);
+                    alert("⏰ " + timers[index].name + " ist fertig!");
                     stopInfiniteAlarm();
                 }, 100);
             }
@@ -234,6 +237,7 @@
         if (runningStates[index]) {
             stopTimer(index);
         } else {
+            // Falls der Timer bei 0 stand, Reset auf initial
             if (timers[index].time <= 0) timers[index].time = timers[index].initial;
             runningStates[index] = true;
             timerWorker.postMessage({ index, cmd: 'start' });
@@ -248,8 +252,8 @@
     }
 
     function editTime(index) {
-        let newMin = prompt("Minuten eingeben:", Math.floor(timers[index].time / 60));
-        if (newMin !== null) {
+        let newMin = prompt("Minuten eingeben:", Math.floor(timers[index].initial / 60));
+        if (newMin !== null && newMin !== "") {
             const val = parseInt(newMin) * 60;
             timers[index].time = val;
             timers[index].initial = val;
