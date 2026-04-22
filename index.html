@@ -26,7 +26,7 @@
             align-items: center;
         }
 
-        h1 { font-size: 24px; margin-bottom: 20px; color: var(--text-main); letter-spacing: 1px; }
+        h1 { font-size: 24px; margin-bottom: 10px; color: var(--text-main); letter-spacing: 1px; }
 
         .container {
             display: grid;
@@ -58,7 +58,8 @@
             margin-bottom: 8px; 
             text-transform: uppercase;
             font-weight: bold;
-            cursor: pointer;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .time-display { 
@@ -67,14 +68,13 @@
             font-weight: bold; 
             color: var(--accent); 
             margin-bottom: 15px; 
-            cursor: pointer;
         }
 
         .btn { 
             background: var(--accent); 
             border: none; 
             color: #fff; 
-            padding: 12px; 
+            padding: 10px; 
             border-radius: 12px; 
             width: 100%; 
             font-size: 14px; 
@@ -84,24 +84,78 @@
 
         .btn.stop { background: var(--danger); }
 
-        .footer { margin-top: 30px; font-size: 11px; color: var(--text-dim); text-align: center; line-height: 1.5; }
+        #audio-init {
+            background: #334155;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            cursor: pointer;
+        }
+
+        .footer { margin-top: 30px; font-size: 10px; color: var(--text-dim); text-align: center; }
     </style>
 </head>
 <body>
 
 <h1>TIMER STATION</h1>
+<button id="audio-init">🔊 Sound aktivieren</button>
 
 <div class="container" id="app"></div>
 
-<div class="footer">
-    Tippe auf Namen oder Zeit zum Bearbeiten.<br>
-    Der Alarm wiederholt sich, bis du ihn bestätigst.
-</div>
+<div class="footer">Tippe auf Namen oder Zeit zum Bearbeiten.<br>Browser-Tab muss offen bleiben.</div>
 
 <script>
-    // Ein kräftigerer, längerer Alarm-Sound
-    const alarmSound = new Audio('https://actions.google.com/sounds/v1/alarms/alarm_clock_ringing_rising.ogg');
-    
+    // Audio Context Initialisierung
+    let audioCtx = null;
+    document.getElementById('audio-init').addEventListener('click', function() {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        this.style.display = 'none';
+    });
+
+    function playAlarm() {
+        if (!audioCtx) return;
+        
+        // Erzeuge einen lauten Sirenen-Effekt (3 Wiederholungen)
+        for(let i = 0; i < 3; i++) {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(880, audioCtx.currentTime + (i * 0.5));
+            osc.frequency.exponentialRampToValueAtTime(440, audioCtx.currentTime + (i * 0.5) + 0.4);
+            
+            gain.gain.setValueAtTime(0.2, audioCtx.currentTime + (i * 0.5));
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + (i * 0.5) + 0.4);
+            
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            osc.start(audioCtx.currentTime + (i * 0.5));
+            osc.stop(audioCtx.currentTime + (i * 0.5) + 0.5);
+        }
+        if ('vibrate' in navigator) navigator.vibrate([200, 100, 200, 100, 500]);
+    }
+
+    // Web Worker Script als String für Hintergrund-Betrieb
+    const workerCode = `
+        let intervals = {};
+        self.onmessage = function(e) {
+            const { index, cmd } = e.data;
+            if (cmd === 'start') {
+                intervals[index] = setInterval(() => {
+                    self.postMessage({ index, tick: true });
+                }, 1000);
+            } else {
+                clearInterval(intervals[index]);
+                delete intervals[index];
+            }
+        };
+    `;
+    const blob = new Blob([workerCode], { type: 'application/javascript' });
+    const timerWorker = new Worker(URL.createObjectURL(blob));
+
     const defaultData = [
         { id: 1, name: "Timer 1", time: 60, initial: 60 },
         { id: 2, name: "Timer 2", time: 300, initial: 300 },
@@ -112,8 +166,20 @@
     ];
 
     let timers = JSON.parse(localStorage.getItem('myTimers')) || defaultData;
-    let intervals = {};
-    let endTimes = {};
+    let runningStates = {};
+
+    timerWorker.onmessage = function(e) {
+        const { index, tick } = e.data;
+        if (tick && timers[index].time > 0) {
+            timers[index].time--;
+            if (timers[index].time === 0) {
+                stopTimer(index);
+                playAlarm();
+                setTimeout(() => alert(timers[index].name + " ist abgelaufen!"), 100);
+            }
+            render();
+        }
+    };
 
     function saveToStorage() {
         localStorage.setItem('myTimers', JSON.stringify(timers));
@@ -123,7 +189,7 @@
         const app = document.getElementById('app');
         app.innerHTML = '';
         timers.forEach((t, index) => {
-            const isRunning = !!intervals[index];
+            const isRunning = runningStates[index];
             const box = document.createElement('div');
             box.className = `timer-box ${isRunning ? 'running' : ''}`;
             box.innerHTML = `
@@ -138,82 +204,41 @@
     }
 
     function formatTime(s) {
-        if (s < 0) s = 0;
         let m = Math.floor(s / 60);
         let sec = s % 60;
         return `${m}:${sec < 10 ? '0' : ''}${sec}`;
     }
 
     function toggleTimer(index) {
-        // "Unlock" Audio: Browser braucht eine Nutzerinteraktion, um Ton zu erlauben
-        alarmSound.play().then(() => { 
-            alarmSound.pause(); 
-            alarmSound.currentTime = 0; 
-        }).catch(() => {});
-
-        if (intervals[index]) {
-            // STOP
-            clearInterval(intervals[index]);
-            delete intervals[index];
-            delete endTimes[index];
-            alarmSound.pause(); // Ton stoppen, falls er gerade läuft
-            alarmSound.currentTime = 0;
-            render();
+        if (runningStates[index]) {
+            stopTimer(index);
         } else {
-            // START
             if (timers[index].time <= 0) timers[index].time = timers[index].initial;
-            
-            endTimes[index] = Date.now() + (timers[index].time * 1000);
-
-            intervals[index] = setInterval(() => {
-                const remainingMs = endTimes[index] - Date.now();
-                const remainingSec = Math.ceil(remainingMs / 1000);
-
-                if (remainingSec > 0) {
-                    timers[index].time = remainingSec;
-                    render();
-                } else {
-                    // ZEIT ABGELAUFEN
-                    timers[index].time = 0;
-                    clearInterval(intervals[index]);
-                    delete intervals[index];
-                    delete endTimes[index];
-                    render();
-                    
-                    // Alarm-Schleife starten
-                    alarmSound.loop = true;
-                    alarmSound.play();
-                    
-                    try { window.navigator.vibrate([500, 300, 500, 300, 500]); } catch(e) {}
-                    
-                    // Alert unterbricht den Code, bis man OK klickt
-                    setTimeout(() => {
-                        alert("ALARM: " + timers[index].name);
-                        alarmSound.pause(); // Ton aus nach Klick auf OK
-                        alarmSound.currentTime = 0;
-                        alarmSound.loop = false;
-                    }, 200);
-                }
-            }, 1000);
-            render();
+            runningStates[index] = true;
+            timerWorker.postMessage({ index, cmd: 'start' });
         }
+        render();
+    }
+
+    function stopTimer(index) {
+        runningStates[index] = false;
+        timerWorker.postMessage({ index, cmd: 'stop' });
+        render();
     }
 
     function editTime(index) {
-        if (intervals[index]) return;
-        let currentMin = Math.floor(timers[index].time / 60);
-        let newMin = prompt("Minuten für " + timers[index].name + ":", currentMin);
-        if (newMin !== null && newMin !== "") {
-            const totalSec = parseInt(newMin) * 60;
-            timers[index].time = totalSec;
-            timers[index].initial = totalSec;
+        let newMin = prompt("Minuten eingeben:", Math.floor(timers[index].time / 60));
+        if (newMin !== null) {
+            const val = parseInt(newMin) * 60;
+            timers[index].time = val;
+            timers[index].initial = val;
             saveToStorage();
             render();
         }
     }
 
     function editName(index) {
-        let newName = prompt("Name für diesen Timer:", timers[index].name);
+        let newName = prompt("Name:", timers[index].name);
         if (newName) {
             timers[index].name = newName;
             saveToStorage();
