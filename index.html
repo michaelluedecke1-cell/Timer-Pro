@@ -26,7 +26,7 @@
             align-items: center;
         }
 
-        h1 { font-size: 24px; margin-bottom: 10px; color: var(--text-main); letter-spacing: 1px; }
+        h1 { font-size: 24px; margin-bottom: 15px; letter-spacing: 1px; }
 
         .container {
             display: grid;
@@ -41,40 +41,23 @@
             border-radius: 20px; 
             padding: 20px; 
             text-align: center; 
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
             border: 2px solid transparent;
             transition: all 0.3s ease;
         }
 
         .timer-box.running { 
             border-color: var(--accent);
-            transform: scale(1.02);
-            box-shadow: 0 0 15px rgba(34, 197, 94, 0.3);
+            box-shadow: 0 0 15px rgba(34, 197, 94, 0.2);
         }
 
-        .label { 
-            color: var(--text-dim); 
-            font-size: 14px; 
-            margin-bottom: 8px; 
-            text-transform: uppercase;
-            font-weight: bold;
-            cursor: pointer;
-        }
-
-        .time-display { 
-            font-size: 32px; 
-            font-family: monospace;
-            font-weight: bold; 
-            color: var(--accent); 
-            margin-bottom: 15px; 
-            cursor: pointer;
-        }
+        .label { color: var(--text-dim); font-size: 13px; margin-bottom: 5px; font-weight: bold; cursor: pointer; }
+        .time-display { font-size: 30px; font-family: monospace; font-weight: bold; color: var(--accent); margin-bottom: 12px; cursor: pointer; }
 
         .btn { 
             background: var(--accent); 
             border: none; 
             color: #fff; 
-            padding: 10px; 
+            padding: 12px; 
             border-radius: 12px; 
             width: 100%; 
             font-size: 14px; 
@@ -88,13 +71,20 @@
             background: #22c55e;
             color: white;
             border: none;
-            padding: 15px 25px;
+            padding: 15px;
             border-radius: 12px;
             margin-bottom: 20px;
             font-weight: bold;
-            cursor: pointer;
             width: 100%;
             max-width: 400px;
+            cursor: pointer;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+            100% { transform: scale(1); }
         }
     </style>
 </head>
@@ -107,169 +97,142 @@
 
 <script>
     let audioCtx = null;
-    let alarmOsc = null;
-    let alarmGain = null;
+    let alarmInterval = null;
 
-    // Audio-Initialisierung
+    // Aktiviert Audio (Muss durch User-Klick passieren)
     document.getElementById('audio-init').addEventListener('click', function() {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         this.style.display = 'none';
     });
 
-    function startInfiniteAlarm() {
+    // Intensiver Alarmton in Endlosschleife
+    function startAlarm() {
         if (!audioCtx) return;
-        stopInfiniteAlarm();
+        
+        const playTone = () => {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'square'; 
+            osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(440, audioCtx.currentTime + 0.4);
+            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.5);
+        };
 
-        alarmOsc = audioCtx.createOscillator();
-        alarmGain = audioCtx.createGain();
-        
-        alarmOsc.type = 'triangle';
-        alarmOsc.frequency.setValueAtTime(523.25, audioCtx.currentTime);
-        
-        // Intensiver Sirenen-Effekt
-        alarmOsc.frequency.linearRampToValueAtTime(880, audioCtx.currentTime + 0.5);
-        alarmOsc.frequency.setTargetAtTime(523.25, audioCtx.currentTime + 0.5, 0.5);
-
-        alarmGain.gain.setValueAtTime(0.5, audioCtx.currentTime);
-        
-        alarmOsc.connect(alarmGain);
-        alarmGain.connect(audioCtx.destination);
-        alarmOsc.start();
-        
-        if ('vibrate' in navigator) {
-            navigator.vibrate([500, 300, 500, 300, 500]);
-        }
+        playTone();
+        alarmInterval = setInterval(playTone, 600);
+        if ('vibrate' in navigator) navigator.vibrate([500, 200, 500, 200]);
     }
 
-    function stopInfiniteAlarm() {
-        if (alarmOsc) {
-            try { alarmOsc.stop(); } catch(e) {}
-            alarmOsc.disconnect();
-            alarmOsc = null;
-        }
+    function stopAlarm() {
+        clearInterval(alarmInterval);
         if ('vibrate' in navigator) navigator.vibrate(0);
     }
 
-    // Web Worker Setup
+    // WEB WORKER: Läuft im Hintergrund weiter, auch wenn Handy gesperrt
     const workerCode = `
-        let intervals = {};
+        let activeTimers = {};
         self.onmessage = function(e) {
             const { index, cmd } = e.data;
             if (cmd === 'start') {
-                intervals[index] = setInterval(() => {
-                    self.postMessage({ index, tick: true });
+                activeTimers[index] = setInterval(() => {
+                    self.postMessage({ index });
                 }, 1000);
             } else {
-                clearInterval(intervals[index]);
-                delete intervals[index];
+                clearInterval(activeTimers[index]);
+                delete activeTimers[index];
             }
         };
     `;
-    const blob = new Blob([workerCode], { type: 'application/javascript' });
-    const timerWorker = new Worker(URL.createObjectURL(blob));
+    const workerBlob = new Blob([workerCode], { type: 'application/javascript' });
+    const timerWorker = new Worker(URL.createObjectURL(workerBlob));
 
-    const defaultData = [
-        { id: 1, name: "Timer 1", time: 60, initial: 60 },
-        { id: 2, name: "Timer 2", time: 300, initial: 300 },
-        { id: 3, name: "Timer 3", time: 600, initial: 600 },
-        { id: 4, name: "Timer 4", time: 900, initial: 900 },
-        { id: 5, name: "Timer 5", time: 1200, initial: 1200 },
-        { id: 6, name: "Timer 6", time: 1800, initial: 1800 }
+    const defaultTimers = [
+        { name: "Timer 1", time: 60, initial: 60 },
+        { name: "Timer 2", time: 300, initial: 300 },
+        { name: "Timer 3", time: 600, initial: 600 },
+        { name: "Timer 4", time: 900, initial: 900 }
     ];
 
-    let timers = JSON.parse(localStorage.getItem('myTimers')) || defaultData;
-    let runningStates = {};
+    let timers = JSON.parse(localStorage.getItem('savedTimers')) || defaultTimers;
+    let running = {};
 
     timerWorker.onmessage = function(e) {
-        const { index, tick } = e.data;
-        if (tick && timers[index].time > 0) {
-            timers[index].time--;
-            if (timers[index].time === 0) {
-                // Timer stoppen
-                stopTimer(index);
-                
-                // Alarm anwerfen
-                startInfiniteAlarm();
-                
-                // Reset auf Startzeit VOR dem Alert
-                timers[index].time = timers[index].initial;
-                render();
-                
-                // Alert blockiert, bis OK gedrückt wird
+        const idx = e.data.index;
+        if (timers[idx].time > 0) {
+            timers[idx].time--;
+            if (timers[idx].time === 0) {
+                stopTimer(idx);
+                startAlarm();
+                timers[idx].time = timers[idx].initial; // Sofort Reset
                 setTimeout(() => {
-                    alert("⏰ " + timers[index].name + " ist fertig!");
-                    stopInfiniteAlarm();
-                }, 100);
+                    alert("⏰ " + timers[idx].name + " FERTIG!");
+                    stopAlarm();
+                }, 50);
             }
             render();
         }
     };
 
-    function saveToStorage() {
-        localStorage.setItem('myTimers', JSON.stringify(timers));
-    }
-
     function render() {
         const app = document.getElementById('app');
         app.innerHTML = '';
-        timers.forEach((t, index) => {
-            const isRunning = runningStates[index];
-            const box = document.createElement('div');
-            box.className = `timer-box ${isRunning ? 'running' : ''}`;
-            box.innerHTML = `
-                <div class="label" onclick="editName(${index})">${t.name}</div>
-                <div class="time-display" onclick="editTime(${index})">${formatTime(t.time)}</div>
-                <button class="btn ${isRunning ? 'stop' : ''}" onclick="toggleTimer(${index})">
+        timers.forEach((t, i) => {
+            const isRunning = running[i];
+            const div = document.createElement('div');
+            div.className = `timer-box ${isRunning ? 'running' : ''}`;
+            div.innerHTML = `
+                <div class="label" onclick="editName(${i})">${t.name}</div>
+                <div class="time-display" onclick="editTime(${i})">${format(t.time)}</div>
+                <button class="btn ${isRunning ? 'stop' : ''}" onclick="toggle(${i})">
                     ${isRunning ? 'STOP' : 'START'}
                 </button>
             `;
-            app.appendChild(box);
+            app.appendChild(div);
         });
     }
 
-    function formatTime(s) {
-        let m = Math.floor(s / 60);
-        let sec = s % 60;
-        return `${m}:${sec < 10 ? '0' : ''}${sec}`;
+    function format(s) {
+        return `${Math.floor(s/60)}:${(s%60).toString().padStart(2, '0')}`;
     }
 
-    function toggleTimer(index) {
-        if (runningStates[index]) {
-            stopTimer(index);
+    function toggle(i) {
+        if (running[i]) {
+            stopTimer(i);
+            timers[i].time = timers[i].initial;
         } else {
-            // Falls der Timer bei 0 stand, Reset auf initial
-            if (timers[index].time <= 0) timers[index].time = timers[index].initial;
-            runningStates[index] = true;
-            timerWorker.postMessage({ index, cmd: 'start' });
+            running[i] = true;
+            timerWorker.postMessage({ index: i, cmd: 'start' });
         }
         render();
     }
 
-    function stopTimer(index) {
-        runningStates[index] = false;
-        timerWorker.postMessage({ index, cmd: 'stop' });
+    function stopTimer(i) {
+        running[i] = false;
+        timerWorker.postMessage({ index: i, cmd: 'stop' });
         render();
     }
 
-    function editTime(index) {
-        let newMin = prompt("Minuten eingeben:", Math.floor(timers[index].initial / 60));
-        if (newMin !== null && newMin !== "") {
-            const val = parseInt(newMin) * 60;
-            timers[index].time = val;
-            timers[index].initial = val;
-            saveToStorage();
+    function editTime(i) {
+        let m = prompt("Minuten für " + timers[i].name + ":", timers[i].initial / 60);
+        if (m) {
+            timers[i].initial = parseInt(m) * 60;
+            timers[i].time = timers[i].initial;
+            save();
             render();
         }
     }
 
-    function editName(index) {
-        let newName = prompt("Name:", timers[index].name);
-        if (newName) {
-            timers[index].name = newName;
-            saveToStorage();
-            render();
-        }
+    function editName(i) {
+        let n = prompt("Name:", timers[i].name);
+        if (n) { timers[i].name = n; save(); render(); }
     }
+
+    function save() { localStorage.setItem('savedTimers', JSON.stringify(timers)); }
 
     render();
 </script>
