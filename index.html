@@ -59,9 +59,6 @@
             text-transform: uppercase;
             font-weight: bold;
             cursor: pointer;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
         }
 
         .time-display { 
@@ -83,11 +80,9 @@
             font-size: 14px; 
             font-weight: bold;
             cursor: pointer;
-            transition: background 0.2s;
         }
 
         .btn.stop { background: var(--danger); }
-        .btn:active { opacity: 0.8; }
 
         .footer { margin-top: 30px; font-size: 11px; color: var(--text-dim); text-align: center; line-height: 1.5; }
     </style>
@@ -99,13 +94,13 @@
 <div class="container" id="app"></div>
 
 <div class="footer">
-    Tippe auf Namen oder Zeit zum Bearbeiten<br>
-    Stelle sicher, dass der Ton am Gerät eingeschaltet ist.
+    Tippe auf Namen oder Zeit zum Bearbeiten.<br>
+    Der Alarm wiederholt sich, bis du ihn bestätigst.
 </div>
 
 <script>
-    // Alarm-Sound initialisieren
-    const alarmSound = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
+    // Ein kräftigerer, längerer Alarm-Sound
+    const alarmSound = new Audio('https://actions.google.com/sounds/v1/alarms/alarm_clock_ringing_rising.ogg');
     
     const defaultData = [
         { id: 1, name: "Timer 1", time: 60, initial: 60 },
@@ -118,6 +113,7 @@
 
     let timers = JSON.parse(localStorage.getItem('myTimers')) || defaultData;
     let intervals = {};
+    let endTimes = {};
 
     function saveToStorage() {
         localStorage.setItem('myTimers', JSON.stringify(timers));
@@ -127,7 +123,7 @@
         const app = document.getElementById('app');
         app.innerHTML = '';
         timers.forEach((t, index) => {
-            const isRunning = intervals[index];
+            const isRunning = !!intervals[index];
             const box = document.createElement('div');
             box.className = `timer-box ${isRunning ? 'running' : ''}`;
             box.innerHTML = `
@@ -142,47 +138,61 @@
     }
 
     function formatTime(s) {
+        if (s < 0) s = 0;
         let m = Math.floor(s / 60);
         let sec = s % 60;
         return `${m}:${sec < 10 ? '0' : ''}${sec}`;
     }
 
     function toggleTimer(index) {
-        // Browser-Audio entsperren (Wichtig für Mobilgeräte)
-        alarmSound.play().then(() => {
-            alarmSound.pause();
-            alarmSound.currentTime = 0;
+        // "Unlock" Audio: Browser braucht eine Nutzerinteraktion, um Ton zu erlauben
+        alarmSound.play().then(() => { 
+            alarmSound.pause(); 
+            alarmSound.currentTime = 0; 
         }).catch(() => {});
 
         if (intervals[index]) {
+            // STOP
             clearInterval(intervals[index]);
             delete intervals[index];
+            delete endTimes[index];
+            alarmSound.pause(); // Ton stoppen, falls er gerade läuft
+            alarmSound.currentTime = 0;
             render();
         } else {
-            // Falls Timer bereits auf 0, zurücksetzen vor Start
-            if (timers[index].time <= 0) {
-                timers[index].time = timers[index].initial || 60;
-            }
+            // START
+            if (timers[index].time <= 0) timers[index].time = timers[index].initial;
+            
+            endTimes[index] = Date.now() + (timers[index].time * 1000);
 
             intervals[index] = setInterval(() => {
-                if (timers[index].time > 0) {
-                    timers[index].time--;
-                    // Performance-Optimierung: Nur das betroffene Element updaten statt ganzes render()
-                    render(); 
+                const remainingMs = endTimes[index] - Date.now();
+                const remainingSec = Math.ceil(remainingMs / 1000);
+
+                if (remainingSec > 0) {
+                    timers[index].time = remainingSec;
+                    render();
                 } else {
+                    // ZEIT ABGELAUFEN
+                    timers[index].time = 0;
                     clearInterval(intervals[index]);
                     delete intervals[index];
-                    
-                    // ALARM AUSLÖSEN
-                    alarmSound.play();
-                    try { window.navigator.vibrate([500, 200, 500]); } catch(e) {}
-                    
+                    delete endTimes[index];
                     render();
                     
-                    // Kurze Verzögerung für das Alert, damit der Browser den Sound-Thread nicht blockiert
+                    // Alarm-Schleife starten
+                    alarmSound.loop = true;
+                    alarmSound.play();
+                    
+                    try { window.navigator.vibrate([500, 300, 500, 300, 500]); } catch(e) {}
+                    
+                    // Alert unterbricht den Code, bis man OK klickt
                     setTimeout(() => {
-                        alert("ZEIT ABGELAUFEN: " + timers[index].name);
-                    }, 100);
+                        alert("ALARM: " + timers[index].name);
+                        alarmSound.pause(); // Ton aus nach Klick auf OK
+                        alarmSound.currentTime = 0;
+                        alarmSound.loop = false;
+                    }, 200);
                 }
             }, 1000);
             render();
@@ -190,12 +200,13 @@
     }
 
     function editTime(index) {
+        if (intervals[index]) return;
         let currentMin = Math.floor(timers[index].time / 60);
         let newMin = prompt("Minuten für " + timers[index].name + ":", currentMin);
         if (newMin !== null && newMin !== "") {
-            const val = parseInt(newMin) * 60;
-            timers[index].time = val;
-            timers[index].initial = val; // Speicher den Startwert zum Resetten
+            const totalSec = parseInt(newMin) * 60;
+            timers[index].time = totalSec;
+            timers[index].initial = totalSec;
             saveToStorage();
             render();
         }
@@ -210,7 +221,6 @@
         }
     }
 
-    // Initiales Rendern
     render();
 </script>
 </body>
