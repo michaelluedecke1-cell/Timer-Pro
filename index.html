@@ -4,68 +4,68 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Timer Station Pro</title>
+    <title>Timer Station</title>
     <style>
         :root { --bg: #0f172a; --card: #1e293b; --green: #22c55e; --red: #ef4444; --text: #f8fafc; }
         body { background: var(--bg); color: var(--text); font-family: sans-serif; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
         .container { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: 100%; max-width: 400px; }
         .timer-box { background: var(--card); border-radius: 15px; padding: 15px; text-align: center; border: 2px solid transparent; }
-        .timer-box.running { border-color: var(--green); }
-        .label { color: #94a3b8; font-size: 12px; font-weight: bold; cursor: pointer; margin-bottom: 5px; }
-        .time-display { font-size: 28px; font-family: monospace; font-weight: bold; color: var(--green); margin-bottom: 10px; cursor: pointer; }
+        .timer-box.running { border-color: var(--green); background: #1e3a2f; }
+        .label { color: #94a3b8; font-size: 13px; font-weight: bold; cursor: pointer; margin-bottom: 5px; }
+        .time-display { font-size: 32px; font-family: monospace; font-weight: bold; color: var(--green); margin-bottom: 10px; cursor: pointer; }
         .btn { background: var(--green); border: none; color: #fff; padding: 12px; border-radius: 10px; width: 100%; font-size: 14px; font-weight: bold; cursor: pointer; }
-        #audio-init { background: #f59e0b; color: white; border: none; padding: 20px; border-radius: 12px; margin-bottom: 20px; font-weight: bold; width: 100%; max-width: 400px; cursor: pointer; font-size: 18px; }
+        #audio-init { background: #f59e0b; color: white; border: none; padding: 20px; border-radius: 12px; margin-bottom: 20px; font-weight: bold; width: 100%; max-width: 400px; cursor: pointer; font-size: 18px; box-shadow: 0 4px 15px rgba(245, 158, 11, 0.4); }
         #alarm-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #b91c1c; z-index: 9999; flex-direction: column; justify-content: center; align-items: center; }
-        #alarm-overlay h2 { font-size: 40px; color: white; margin-bottom: 30px; text-align: center; }
+        #alarm-overlay h2 { font-size: 45px; color: white; margin-bottom: 30px; text-align: center; animation: pulse 0.5s infinite; }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
     </style>
 </head>
 <body>
 
 <h1>TIMER STATION</h1>
-<button id="audio-init">🔊 START: SOUND & STANDBY-FIX</button>
+<button id="audio-init">🔊 1. SOUND AKTIVIEREN (WICHTIG)</button>
 
 <div class="container" id="app"></div>
 
 <div id="alarm-overlay">
     <h2 id="alarm-name">FERTIG</h2>
-    <button class="btn" style="width: 250px; height: 80px; font-size: 20px; background: white; color: black;" onclick="stopSirene()">SIRENE AUS</button>
+    <button class="btn" style="width: 250px; height: 100px; font-size: 24px; background: white; color: black; border: 4px solid black;" onclick="stopSirene()">SIRENE AUS</button>
 </div>
 
 <script>
     let audioCtx = null;
     let sireneActive = false;
     let timers = [];
-    let runningStates = {}; // Speichert die Endzeitpunkt-Millisekunden
+    let endTimes = {}; // Speichert die Ziel-Uhrzeit für jeden Timer
 
-    // 1. Audio initialisieren & Android "Wachhalter"
+    // 1. Audio-Initialisierung
     document.getElementById('audio-init').addEventListener('click', function() {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        gain.gain.value = 0.001; // Fast stumm
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.loop = true;
-        osc.start(0);
+        // Kurzer Bestätigungston
+        const o = audioCtx.createOscillator();
+        o.connect(audioCtx.destination);
+        o.start(); o.stop(audioCtx.currentTime + 0.1);
         this.style.display = "none";
     });
 
-    // Dauer-Sirene (Wiu-Wiu)
+    // 2. Die unendliche Sirene (Wiu-Wiu-Wiu)
     async function startSirene() {
         if (!audioCtx) return;
         sireneActive = true;
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+
         while (sireneActive) {
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
             osc.type = 'sawtooth';
-            let freq = (Math.floor(Date.now() / 250) % 2 === 0) ? 1400 : 800;
+            let freq = (Math.floor(Date.now() / 200) % 2 === 0) ? 1500 : 800;
             osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
             gain.gain.setValueAtTime(1.0, audioCtx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.25);
             osc.connect(gain);
             gain.connect(audioCtx.destination);
-            osc.start(); osc.stop(audioCtx.currentTime + 0.25);
-            if ('vibrate' in navigator) navigator.vibrate(200);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+            if ('vibrate' in navigator) navigator.vibrate(300);
             await new Promise(r => setTimeout(r, 250));
         }
     }
@@ -73,33 +73,38 @@
     function stopSirene() {
         sireneActive = false;
         document.getElementById('alarm-overlay').style.display = "none";
+        if ('vibrate' in navigator) navigator.vibrate(0);
     }
 
-    // Präzise Zeitberechnung (Hintergrund-sicher)
-    function updateTimers() {
+    // 3. Haupt-Logik: Zeitberechnung über Systemuhr
+    function tick() {
         const now = Date.now();
-        let changed = false;
+        let needsRender = false;
 
         timers.forEach((t, i) => {
-            if (runningStates[i]) {
-                const remaining = Math.max(0, Math.ceil((runningStates[i] - now) / 1000));
-                if (remaining !== t.time) {
-                    t.time = remaining;
-                    changed = true;
-                }
-                if (t.time <= 0) {
-                    runningStates[i] = null;
+            if (endTimes[i]) {
+                const diff = endTimes[i] - now;
+                if (diff <= 0) {
+                    // Timer abgelaufen!
+                    endTimes[i] = null;
                     t.time = t.initial;
                     document.getElementById('alarm-name').innerText = t.name;
                     document.getElementById('alarm-overlay').style.display = "flex";
                     startSirene();
+                    needsRender = true;
+                } else {
+                    const newSec = Math.ceil(diff / 1000);
+                    if (t.time !== newSec) {
+                        t.time = newSec;
+                        needsRender = true;
+                    }
                 }
             }
         });
-        if (changed) render();
+        if (needsRender) render();
     }
 
-    setInterval(updateTimers, 500);
+    setInterval(tick, 200); // Prüft 5x pro Sekunde
 
     const defaultData = [
         { name: "Timer 1", time: 60, initial: 60 }, { name: "Timer 2", time: 300, initial: 300 },
@@ -113,7 +118,7 @@
         const app = document.getElementById('app');
         app.innerHTML = '';
         timers.forEach((t, i) => {
-            const isRunning = !!runningStates[i];
+            const isRunning = !!endTimes[i];
             const div = document.createElement('div');
             div.className = `timer-box ${isRunning ? 'running' : ''}`;
             div.innerHTML = `
@@ -128,18 +133,19 @@
     }
 
     function toggle(i) {
-        if (runningStates[i]) {
-            runningStates[i] = null;
+        if (endTimes[i]) {
+            endTimes[i] = null;
             timers[i].time = timers[i].initial;
         } else {
-            if (!audioCtx) { alert("ERST ORANGE KNOPF DRÜCKEN!"); return; }
-            runningStates[i] = Date.now() + (timers[i].time * 1000);
+            if (!audioCtx) { alert("Bitte erst oben SOUND AKTIVIEREN!"); return; }
+            endTimes[i] = Date.now() + (timers[i].time * 1000);
         }
         render();
     }
 
     function editTime(i) {
-        let m = prompt("Minuten:", Math.floor(timers[i].initial / 60));
+        if (endTimes[i]) return;
+        let m = prompt("Minuten für " + timers[i].name + ":", timers[i].initial / 60);
         if (m) {
             let val = parseInt(m) * 60;
             timers[i].initial = val;
