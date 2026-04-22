@@ -32,8 +32,8 @@
 
         .timer-box.running { border-color: var(--accent); }
 
-        .label { color: #94a3b8; font-size: 13px; margin-bottom: 5px; font-weight: bold; }
-        .time-display { font-size: 30px; font-family: monospace; font-weight: bold; color: var(--accent); margin-bottom: 12px; }
+        .label { color: #94a3b8; font-size: 13px; margin-bottom: 5px; font-weight: bold; cursor: pointer; }
+        .time-display { font-size: 30px; font-family: monospace; font-weight: bold; color: var(--accent); margin-bottom: 12px; cursor: pointer; }
 
         .btn { 
             background: var(--accent); border: none; color: #fff; 
@@ -53,7 +53,7 @@
 <body>
 
 <h1>TIMER STATION</h1>
-<button id="audio-init">⚠️ SOUND AKTIVIEREN (VOR START)</button>
+<button id="audio-init">🔊 SOUND AKTIVIEREN</button>
 
 <div class="container" id="app"></div>
 
@@ -62,44 +62,34 @@
     let alarmActive = false;
     let running = {};
 
-    // Sound-System initialisieren
     document.getElementById('audio-init').addEventListener('click', function() {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        this.style.backgroundColor = "#22c55e";
-        this.innerText = "✅ SOUND BEREIT";
-        // Kurzer Test-Ton
-        const osc = audioCtx.createOscillator();
-        osc.connect(audioCtx.destination);
-        osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+        this.style.display = "none";
     });
 
-    // DER ENDLOS-ALARM
     async function playHeavyAlarm() {
         if (!audioCtx) return;
         alarmActive = true;
 
-        // Loop, der so lange läuft, bis alarmActive = false
         while (alarmActive) {
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
             
-            osc.type = 'square'; // Aggressiver Sound
-            osc.frequency.setValueAtTime(900, audioCtx.currentTime);
-            osc.frequency.exponentialRampToValueAtTime(400, audioCtx.currentTime + 0.3);
+            osc.type = 'sawtooth'; 
+            osc.frequency.setValueAtTime(1200, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(600, audioCtx.currentTime + 0.2);
             
-            gain.gain.setValueAtTime(1.0, audioCtx.currentTime); // Volle Lautstärke
-            gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.4);
+            gain.gain.setValueAtTime(1.0, audioCtx.currentTime);
+            gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.3);
             
             osc.connect(gain);
             gain.connect(audioCtx.destination);
             
             osc.start();
-            osc.stop(audioCtx.currentTime + 0.5);
+            osc.stop(audioCtx.currentTime + 0.3);
             
-            if ('vibrate' in navigator) navigator.vibrate(500);
-            
-            // Warte 0.6 Sekunden bis zum nächsten Piep
-            await new Promise(r => setTimeout(r, 600));
+            if ('vibrate' in navigator) navigator.vibrate(400);
+            await new Promise(r => setTimeout(r, 400));
         }
     }
 
@@ -137,15 +127,12 @@
                 stopTimer(idx);
                 timers[idx].time = timers[idx].initial;
                 render();
-                
-                // Starte den unendlichen Loop
                 playHeavyAlarm();
                 
-                // Alert Fenster
                 setTimeout(() => {
-                    alert("⏰ ALARM: " + timers[idx].name);
-                    alarmActive = false; // Stoppt den Sound-Loop nach Klick auf OK
-                    if ('vibrate' in navigator) navigator.vibrate(0);
+                    // Zeigt NUR den Namen des Timers (z.B. Fernsehen)
+                    alert(timers[idx].name); 
+                    alarmActive = false;
                 }, 100);
             }
             render();
@@ -179,7 +166,7 @@
             stopTimer(i);
             timers[i].time = timers[i].initial;
         } else {
-            if (!audioCtx) { alert("Bitte erst oben auf den orangenen Button klicken!"); return; }
+            if (!audioCtx) { alert("Bitte erst 'SOUND AKTIVIEREN' drücken!"); return; }
             running[i] = true;
             timerWorker.postMessage({ index: i, cmd: 'start' });
         }
@@ -193,7 +180,7 @@
     }
 
     function editTime(i) {
-        let m = prompt("Minuten für " + timers[i].name + ":", timers[i].initial / 60);
+        let m = prompt("Minuten:", timers[i].initial / 60);
         if (m) {
             timers[i].initial = parseInt(m) * 60;
             timers[i].time = timers[i].initial;
