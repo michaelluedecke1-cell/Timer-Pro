@@ -19,103 +19,79 @@
             background-color: var(--bg-color); 
             color: var(--text-main); 
             font-family: -apple-system, system-ui, sans-serif; 
-            margin: 0; 
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
+            margin: 0; padding: 20px;
+            display: flex; flex-direction: column; align-items: center;
         }
 
-        h1 { font-size: 24px; margin-bottom: 15px; letter-spacing: 1px; }
+        h1 { font-size: 24px; margin-bottom: 15px; }
 
         .container {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 15px;
-            width: 100%;
-            max-width: 400px;
+            display: grid; grid-template-columns: repeat(2, 1fr);
+            gap: 15px; width: 100%; max-width: 400px;
         }
 
         .timer-box { 
-            background: var(--card-bg); 
-            border-radius: 20px; 
-            padding: 20px; 
-            text-align: center; 
-            border: 2px solid transparent;
-            transition: all 0.3s ease;
+            background: var(--card-bg); border-radius: 20px; 
+            padding: 20px; text-align: center; border: 2px solid transparent;
         }
 
-        .timer-box.running { 
-            border-color: var(--accent);
-            box-shadow: 0 0 15px rgba(34, 197, 94, 0.2);
-        }
+        .timer-box.running { border-color: var(--accent); box-shadow: 0 0 10px rgba(34, 197, 94, 0.2); }
 
         .label { color: var(--text-dim); font-size: 13px; margin-bottom: 5px; font-weight: bold; cursor: pointer; }
         .time-display { font-size: 30px; font-family: monospace; font-weight: bold; color: var(--accent); margin-bottom: 12px; cursor: pointer; }
 
         .btn { 
-            background: var(--accent); 
-            border: none; 
-            color: #fff; 
-            padding: 12px; 
-            border-radius: 12px; 
-            width: 100%; 
-            font-size: 14px; 
-            font-weight: bold;
-            cursor: pointer;
+            background: var(--accent); border: none; color: #fff; 
+            padding: 12px; border-radius: 12px; width: 100%; 
+            font-size: 14px; font-weight: bold; cursor: pointer;
         }
 
         .btn.stop { background: var(--danger); }
 
         #audio-init {
-            background: #22c55e;
-            color: white;
-            border: none;
-            padding: 15px;
-            border-radius: 12px;
-            margin-bottom: 20px;
-            font-weight: bold;
-            width: 100%;
-            max-width: 400px;
-            cursor: pointer;
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.02); }
-            100% { transform: scale(1); }
+            background: var(--accent); color: white; border: none;
+            padding: 15px; border-radius: 12px; margin-bottom: 20px;
+            font-weight: bold; width: 100%; max-width: 400px; cursor: pointer;
         }
     </style>
 </head>
 <body>
 
 <h1>TIMER STATION</h1>
-<button id="audio-init">🔊 ALARM-SOUND AKTIVIEREN</button>
+<button id="audio-init">🔊 SOUND AKTIVIEREN & START</button>
 
 <div class="container" id="app"></div>
 
 <script>
     let audioCtx = null;
     let alarmInterval = null;
+    let running = {};
 
-    // Aktiviert Audio (Muss durch User-Klick passieren)
+    // Audio Initialisierung
     document.getElementById('audio-init').addEventListener('click', function() {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            // Erzeugt eine kurze Stille, um den Audio-Kanal zu öffnen
+            const buffer = audioCtx.createBuffer(1, 1, 22050);
+            const source = audioCtx.createBufferSource();
+            source.buffer = buffer;
+            source.connect(audioCtx.destination);
+            source.start(0);
+        }
         this.style.display = 'none';
     });
 
-    // Intensiver Alarmton in Endlosschleife
     function startAlarm() {
         if (!audioCtx) return;
-        
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+
         const playTone = () => {
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
             osc.type = 'square'; 
             osc.frequency.setValueAtTime(880, audioCtx.currentTime);
             osc.frequency.exponentialRampToValueAtTime(440, audioCtx.currentTime + 0.4);
-            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
             gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
             osc.connect(gain);
             gain.connect(audioCtx.destination);
@@ -125,7 +101,7 @@
 
         playTone();
         alarmInterval = setInterval(playTone, 600);
-        if ('vibrate' in navigator) navigator.vibrate([500, 200, 500, 200]);
+        if ('vibrate' in navigator) navigator.vibrate([500, 200, 500, 200, 500]);
     }
 
     function stopAlarm() {
@@ -133,15 +109,13 @@
         if ('vibrate' in navigator) navigator.vibrate(0);
     }
 
-    // WEB WORKER: Läuft im Hintergrund weiter, auch wenn Handy gesperrt
+    // Web Worker Code
     const workerCode = `
         let activeTimers = {};
         self.onmessage = function(e) {
             const { index, cmd } = e.data;
             if (cmd === 'start') {
-                activeTimers[index] = setInterval(() => {
-                    self.postMessage({ index });
-                }, 1000);
+                activeTimers[index] = setInterval(() => { self.postMessage({ index }); }, 1000);
             } else {
                 clearInterval(activeTimers[index]);
                 delete activeTimers[index];
@@ -155,11 +129,12 @@
         { name: "Timer 1", time: 60, initial: 60 },
         { name: "Timer 2", time: 300, initial: 300 },
         { name: "Timer 3", time: 600, initial: 600 },
-        { name: "Timer 4", time: 900, initial: 900 }
+        { name: "Timer 4", time: 900, initial: 900 },
+        { name: "Timer 5", time: 1200, initial: 1200 },
+        { name: "Timer 6", time: 1800, initial: 1800 }
     ];
 
     let timers = JSON.parse(localStorage.getItem('savedTimers')) || defaultTimers;
-    let running = {};
 
     timerWorker.onmessage = function(e) {
         const idx = e.data.index;
@@ -168,11 +143,14 @@
             if (timers[idx].time === 0) {
                 stopTimer(idx);
                 startAlarm();
-                timers[idx].time = timers[idx].initial; // Sofort Reset
+                timers[idx].time = timers[idx].initial; // Zurücksetzen für das Display
+                render();
+                
+                // Kurze Verzögerung für den Alert
                 setTimeout(() => {
-                    alert("⏰ " + timers[idx].name + " FERTIG!");
+                    alert("⏰ ZEIT ABGELAUFEN: " + timers[idx].name);
                     stopAlarm();
-                }, 50);
+                }, 100);
             }
             render();
         }
@@ -205,6 +183,7 @@
             stopTimer(i);
             timers[i].time = timers[i].initial;
         } else {
+            if (!audioCtx) alert("Bitte zuerst oben den Sound aktivieren!");
             running[i] = true;
             timerWorker.postMessage({ index: i, cmd: 'start' });
         }
@@ -214,14 +193,14 @@
     function stopTimer(i) {
         running[i] = false;
         timerWorker.postMessage({ index: i, cmd: 'stop' });
-        render();
     }
 
     function editTime(i) {
         let m = prompt("Minuten für " + timers[i].name + ":", timers[i].initial / 60);
-        if (m) {
-            timers[i].initial = parseInt(m) * 60;
-            timers[i].time = timers[i].initial;
+        if (m !== null && m !== "") {
+            const val = parseInt(m) * 60;
+            timers[i].initial = val;
+            timers[i].time = val;
             save();
             render();
         }
@@ -232,7 +211,9 @@
         if (n) { timers[i].name = n; save(); render(); }
     }
 
-    function save() { localStorage.setItem('savedTimers', JSON.stringify(timers)); }
+    function save() {
+        localStorage.setItem('savedTimers', JSON.stringify(timers));
+    }
 
     render();
 </script>
