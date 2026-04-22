@@ -4,70 +4,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Timer Sirene Pro</title>
+    <title>Timer Station Sirene</title>
     <style>
-        :root {
-            --bg-color: #0f172a;
-            --card-bg: #1e293b;
-            --accent: #22c55e;
-            --danger: #ef4444;
-            --text-main: #f8fafc;
-        }
-
-        body { 
-            background-color: var(--bg-color); color: var(--text-main); 
-            font-family: sans-serif; margin: 0; padding: 20px;
-            display: flex; flex-direction: column; align-items: center;
-        }
-
-        .container {
-            display: grid; grid-template-columns: repeat(2, 1fr);
-            gap: 12px; width: 100%; max-width: 400px;
-        }
-
-        .timer-box { 
-            background: var(--card-bg); border-radius: 15px; 
-            padding: 15px; text-align: center; border: 2px solid transparent;
-        }
-
-        .timer-box.running { border-color: var(--accent); }
-
-        .label { color: #94a3b8; font-size: 12px; margin-bottom: 5px; font-weight: bold; cursor: pointer; }
-        .time-display { font-size: 28px; font-family: monospace; font-weight: bold; color: var(--accent); margin-bottom: 10px; cursor: pointer; }
-
-        .btn { 
-            background: var(--accent); border: none; color: #fff; 
-            padding: 12px; border-radius: 10px; width: 100%; 
-            font-size: 14px; font-weight: bold; cursor: pointer;
-        }
-
-        /* Das Rote Alarm-Overlay */
-        #alarm-overlay {
-            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: #b91c1c; z-index: 9999; flex-direction: column; 
-            justify-content: center; align-items: center;
-        }
-
-        #alarm-overlay h2 { font-size: 50px; color: white; margin-bottom: 40px; animation: flash 0.5s infinite; }
-        
-        @keyframes flash { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
-
-        #audio-init {
-            background: #f59e0b; color: white; border: none; padding: 20px; border-radius: 12px; margin-bottom: 20px;
-            font-weight: bold; width: 100%; max-width: 400px; cursor: pointer; font-size: 18px;
-        }
+        :root { --bg: #0f172a; --card: #1e293b; --green: #22c55e; --red: #ef4444; --text: #f8fafc; }
+        body { background: var(--bg); color: var(--text); font-family: sans-serif; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .container { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: 100%; max-width: 400px; }
+        .timer-box { background: var(--card); border-radius: 15px; padding: 15px; text-align: center; border: 2px solid transparent; }
+        .timer-box.running { border-color: var(--green); }
+        .label { color: #94a3b8; font-size: 12px; font-weight: bold; cursor: pointer; margin-bottom: 5px; text-decoration: underline; }
+        .time-display { font-size: 28px; font-family: monospace; font-weight: bold; color: var(--green); margin-bottom: 10px; cursor: pointer; }
+        .btn { background: var(--green); border: none; color: #fff; padding: 12px; border-radius: 10px; width: 100%; font-size: 14px; font-weight: bold; cursor: pointer; }
+        #audio-init { background: #f59e0b; color: white; border: none; padding: 20px; border-radius: 12px; margin-bottom: 20px; font-weight: bold; width: 100%; max-width: 400px; cursor: pointer; font-size: 18px; }
+        #alarm-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #b91c1c; z-index: 9999; flex-direction: column; justify-content: center; align-items: center; }
+        #alarm-overlay h2 { font-size: 40px; color: white; margin-bottom: 30px; text-align: center; }
     </style>
 </head>
 <body>
 
 <h1>TIMER STATION</h1>
-<button id="audio-init">⚠️ 1. SIRENE AKTIVIEREN</button>
+<button id="audio-init">🔊 1. SOUND AKTIVIEREN & TESTEN</button>
 
 <div class="container" id="app"></div>
 
 <div id="alarm-overlay">
-    <h2 id="alarm-timer-name">FERTIG</h2>
-    <button class="btn" style="width: 280px; height: 100px; font-size: 24px; background: white; color: black;" onclick="stopSirene()">SIRENE AUS</button>
+    <h2 id="alarm-name">FERTIG</h2>
+    <button class="btn" style="width: 250px; height: 80px; font-size: 20px; background: white; color: black;" onclick="stopSirene()">ALARM AUS</button>
 </div>
 
 <script>
@@ -75,46 +36,31 @@
     let sireneActive = false;
     let running = {};
 
-    // 1. Audio freischalten
+    // 1. Audio-Initialisierung
     document.getElementById('audio-init').addEventListener('click', function() {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        
-        // Test-Piep zur Bestätigung
         const o = audioCtx.createOscillator();
-        const g = audioCtx.createGain();
-        o.connect(g); g.connect(audioCtx.destination);
+        o.connect(audioCtx.destination);
         o.start(); o.stop(audioCtx.currentTime + 0.1);
-        
         this.style.display = "none";
     });
 
-    // 2. Die unendliche Sirene
+    // Sirene (Wiu-Wiu)
     async function startSirene() {
         if (!audioCtx) return;
         sireneActive = true;
         if (audioCtx.state === 'suspended') audioCtx.resume();
-
         while (sireneActive) {
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
-            
-            // Sirenen-Sound: Sawtooth für maximale Schärfe
             osc.type = 'sawtooth';
-            let now = audioCtx.currentTime;
-            
-            // Frequenz-Sprung (Wiu-Wiu)
-            let freq = (Math.floor(Date.now() / 250) % 2 === 0) ? 1400 : 800;
-            
-            osc.frequency.setValueAtTime(freq, now);
-            gain.gain.setValueAtTime(1.0, now);
-            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
-            
+            let freq = (Math.floor(Date.now() / 200) % 2 === 0) ? 1200 : 800;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(1.0, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
             osc.connect(gain);
             gain.connect(audioCtx.destination);
-            
-            osc.start();
-            osc.stop(now + 0.3);
-            
+            osc.start(); osc.stop(audioCtx.currentTime + 0.25);
             if ('vibrate' in navigator) navigator.vibrate(200);
             await new Promise(r => setTimeout(r, 250));
         }
@@ -125,7 +71,7 @@
         document.getElementById('alarm-overlay').style.display = "none";
     }
 
-    // 3. Zeit-Zähler im Hintergrund
+    // Web Worker für Hintergrund-Zählung
     const workerCode = `
         let t = {};
         self.onmessage = function(e) {
@@ -141,12 +87,9 @@
     const timerWorker = new Worker(URL.createObjectURL(workerBlob));
 
     const defaultData = [
-        { name: "Timer 1", time: 60, initial: 60 },
-        { name: "Timer 2", time: 300, initial: 300 },
-        { name: "Timer 3", time: 600, initial: 600 },
-        { name: "Timer 4", time: 900, initial: 900 },
-        { name: "Timer 5", time: 1200, initial: 1200 },
-        { name: "Timer 6", time: 1800, initial: 1800 }
+        { name: "Timer 1", time: 60, initial: 60 }, { name: "Timer 2", time: 300, initial: 300 },
+        { name: "Timer 3", time: 600, initial: 600 }, { name: "Timer 4", time: 900, initial: 900 },
+        { name: "Timer 5", time: 1200, initial: 1200 }, { name: "Timer 6", time: 1800, initial: 1800 }
     ];
 
     let timers = JSON.parse(localStorage.getItem('myTimers')) || defaultData;
@@ -160,8 +103,7 @@
                 timerWorker.postMessage({ i: idx, cmd: 'stop' });
                 timers[idx].time = timers[idx].initial;
                 render();
-                
-                document.getElementById('alarm-timer-name').innerText = timers[idx].name;
+                document.getElementById('alarm-name').innerText = timers[idx].name;
                 document.getElementById('alarm-overlay').style.display = "flex";
                 startSirene();
             }
@@ -192,7 +134,7 @@
             timerWorker.postMessage({ i, cmd: 'stop' });
             timers[i].time = timers[i].initial;
         } else {
-            if (!audioCtx) { alert("Bitte erst 'SIRENE AKTIVIEREN' klicken!"); return; }
+            if (!audioCtx) { alert("ERST ORANGE KNOPF DRÜCKEN!"); return; }
             running[i] = true;
             timerWorker.postMessage({ i, cmd: 'start' });
         }
@@ -200,20 +142,28 @@
     }
 
     function editTime(i) {
-        let m = prompt("Minuten:", timers[i].initial / 60);
-        if (m) {
-            timers[i].initial = parseInt(m) * 60;
-            timers[i].time = timers[i].initial;
-            save(); render();
+        if (running[i]) return;
+        let m = prompt("Neue Minuten eingeben:", Math.floor(timers[i].initial / 60));
+        if (m !== null && m !== "") {
+            let val = parseInt(m) * 60;
+            if (!isNaN(val)) {
+                timers[i].initial = val;
+                timers[i].time = val;
+                localStorage.setItem('myTimers', JSON.stringify(timers));
+                render();
+            }
         }
     }
 
     function editName(i) {
-        let n = prompt("Name:", timers[i].name);
-        if (n) { timers[i].name = n; save(); render(); }
+        let n = prompt("Neuer Name:", timers[i].name);
+        if (n) { 
+            timers[i].name = n; 
+            localStorage.setItem('myTimers', JSON.stringify(timers)); 
+            render(); 
+        }
     }
 
-    function save() { localStorage.setItem('myTimers', JSON.stringify(timers)); }
     render();
 </script>
 </body>
