@@ -14,16 +14,15 @@
         .label { color: #94a3b8; font-size: 13px; font-weight: bold; cursor: pointer; margin-bottom: 5px; }
         .time-display { font-size: 32px; font-family: monospace; font-weight: bold; color: var(--green); margin-bottom: 10px; cursor: pointer; }
         .btn { background: var(--green); border: none; color: #fff; padding: 12px; border-radius: 10px; width: 100%; font-size: 14px; font-weight: bold; cursor: pointer; }
-        #audio-init { background: #f59e0b; color: white; border: none; padding: 20px; border-radius: 12px; margin-bottom: 20px; font-weight: bold; width: 100%; max-width: 400px; cursor: pointer; font-size: 18px; box-shadow: 0 4px 15px rgba(245, 158, 11, 0.4); }
+        #audio-init { background: #f59e0b; color: white; border: none; padding: 20px; border-radius: 12px; margin-bottom: 20px; font-weight: bold; width: 100%; max-width: 400px; cursor: pointer; font-size: 18px; }
         #alarm-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #b91c1c; z-index: 9999; flex-direction: column; justify-content: center; align-items: center; }
-        #alarm-overlay h2 { font-size: 45px; color: white; margin-bottom: 30px; text-align: center; animation: pulse 0.5s infinite; }
-        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
+        #alarm-overlay h2 { font-size: 45px; color: white; margin-bottom: 30px; text-align: center; }
     </style>
 </head>
 <body>
 
 <h1>TIMER STATION</h1>
-<button id="audio-init">🔊 1. SOUND AKTIVIEREN (WICHTIG)</button>
+<button id="audio-init">🔊 ALARM-SYSTEM SCHARF SCHALTEN</button>
 
 <div class="container" id="app"></div>
 
@@ -36,19 +35,24 @@
     let audioCtx = null;
     let sireneActive = false;
     let timers = [];
-    let endTimes = {}; // Speichert die Ziel-Uhrzeit für jeden Timer
+    let endTimes = {}; 
 
-    // 1. Audio-Initialisierung
+    // Audio-Initialisierung OHNE Dauerrauschen
     document.getElementById('audio-init').addEventListener('click', function() {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        // Kurzer Bestätigungston
+        // Nur ein ganz kurzer Klick-Ton zur Aktivierung
         const o = audioCtx.createOscillator();
-        o.connect(audioCtx.destination);
-        o.start(); o.stop(audioCtx.currentTime + 0.1);
+        const g = audioCtx.createGain();
+        g.gain.value = 0.1;
+        o.connect(g);
+        g.connect(audioCtx.destination);
+        o.start(); o.stop(audioCtx.currentTime + 0.05);
+        
+        if ('vibrate' in navigator) navigator.vibrate(50);
         this.style.display = "none";
     });
 
-    // 2. Die unendliche Sirene (Wiu-Wiu-Wiu)
+    // Die Sirene (nur wenn Zeit abgelaufen ist)
     async function startSirene() {
         if (!audioCtx) return;
         sireneActive = true;
@@ -76,7 +80,6 @@
         if ('vibrate' in navigator) navigator.vibrate(0);
     }
 
-    // 3. Haupt-Logik: Zeitberechnung über Systemuhr
     function tick() {
         const now = Date.now();
         let needsRender = false;
@@ -85,7 +88,6 @@
             if (endTimes[i]) {
                 const diff = endTimes[i] - now;
                 if (diff <= 0) {
-                    // Timer abgelaufen!
                     endTimes[i] = null;
                     t.time = t.initial;
                     document.getElementById('alarm-name').innerText = t.name;
@@ -104,7 +106,7 @@
         if (needsRender) render();
     }
 
-    setInterval(tick, 200); // Prüft 5x pro Sekunde
+    setInterval(tick, 200);
 
     const defaultData = [
         { name: "Timer 1", time: 60, initial: 60 }, { name: "Timer 2", time: 300, initial: 300 },
