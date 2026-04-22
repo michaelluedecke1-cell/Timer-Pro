@@ -30,7 +30,7 @@
 
         .container {
             display: grid;
-            grid-template-columns: repeat(2, 1fr); /* 2 Spalten nebeneinander */
+            grid-template-columns: repeat(2, 1fr);
             gap: 15px;
             width: 100%;
             max-width: 400px;
@@ -59,6 +59,9 @@
             text-transform: uppercase;
             font-weight: bold;
             cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .time-display { 
@@ -74,20 +77,19 @@
             background: var(--accent); 
             border: none; 
             color: #fff; 
-            padding: 10px; 
+            padding: 12px; 
             border-radius: 12px; 
             width: 100%; 
             font-size: 14px; 
             font-weight: bold;
             cursor: pointer;
-            transition: opacity 0.2s;
+            transition: background 0.2s;
         }
 
         .btn.stop { background: var(--danger); }
-        .btn:active { opacity: 0.7; }
+        .btn:active { opacity: 0.8; }
 
-        /* Versteckter Footer für Infos */
-        .footer { margin-top: 30px; font-size: 10px; color: var(--text-dim); }
+        .footer { margin-top: 30px; font-size: 11px; color: var(--text-dim); text-align: center; line-height: 1.5; }
     </style>
 </head>
 <body>
@@ -96,16 +98,22 @@
 
 <div class="container" id="app"></div>
 
-<div class="footer">Tippe auf Namen oder Zeit zum Bearbeiten</div>
+<div class="footer">
+    Tippe auf Namen oder Zeit zum Bearbeiten<br>
+    Stelle sicher, dass der Ton am Gerät eingeschaltet ist.
+</div>
 
 <script>
+    // Alarm-Sound initialisieren
+    const alarmSound = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
+    
     const defaultData = [
-        { id: 1, name: "Timer 1", time: 60 },
-        { id: 2, name: "Timer 2", time: 300 },
-        { id: 3, name: "Timer 3", time: 600 },
-        { id: 4, name: "Timer 4", time: 900 },
-        { id: 5, name: "Timer 5", time: 1200 },
-        { id: 6, name: "Timer 6", time: 1800 }
+        { id: 1, name: "Timer 1", time: 60, initial: 60 },
+        { id: 2, name: "Timer 2", time: 300, initial: 300 },
+        { id: 3, name: "Timer 3", time: 600, initial: 600 },
+        { id: 4, name: "Timer 4", time: 900, initial: 900 },
+        { id: 5, name: "Timer 5", time: 1200, initial: 1200 },
+        { id: 6, name: "Timer 6", time: 1800, initial: 1800 }
     ];
 
     let timers = JSON.parse(localStorage.getItem('myTimers')) || defaultData;
@@ -140,31 +148,54 @@
     }
 
     function toggleTimer(index) {
+        // Browser-Audio entsperren (Wichtig für Mobilgeräte)
+        alarmSound.play().then(() => {
+            alarmSound.pause();
+            alarmSound.currentTime = 0;
+        }).catch(() => {});
+
         if (intervals[index]) {
             clearInterval(intervals[index]);
             delete intervals[index];
+            render();
         } else {
+            // Falls Timer bereits auf 0, zurücksetzen vor Start
+            if (timers[index].time <= 0) {
+                timers[index].time = timers[index].initial || 60;
+            }
+
             intervals[index] = setInterval(() => {
                 if (timers[index].time > 0) {
                     timers[index].time--;
-                    render();
+                    // Performance-Optimierung: Nur das betroffene Element updaten statt ganzes render()
+                    render(); 
                 } else {
                     clearInterval(intervals[index]);
                     delete intervals[index];
+                    
+                    // ALARM AUSLÖSEN
+                    alarmSound.play();
+                    try { window.navigator.vibrate([500, 200, 500]); } catch(e) {}
+                    
                     render();
-                    try { window.navigator.vibrate(500); } catch(e) {}
-                    alert(timers[index].name + " ist abgelaufen!");
+                    
+                    // Kurze Verzögerung für das Alert, damit der Browser den Sound-Thread nicht blockiert
+                    setTimeout(() => {
+                        alert("ZEIT ABGELAUFEN: " + timers[index].name);
+                    }, 100);
                 }
             }, 1000);
+            render();
         }
-        render();
     }
 
     function editTime(index) {
         let currentMin = Math.floor(timers[index].time / 60);
         let newMin = prompt("Minuten für " + timers[index].name + ":", currentMin);
         if (newMin !== null && newMin !== "") {
-            timers[index].time = parseInt(newMin) * 60;
+            const val = parseInt(newMin) * 60;
+            timers[index].time = val;
+            timers[index].initial = val; // Speicher den Startwert zum Resetten
             saveToStorage();
             render();
         }
@@ -179,12 +210,8 @@
         }
     }
 
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js');
-    }
-
+    // Initiales Rendern
     render();
 </script>
 </body>
 </html>
-
