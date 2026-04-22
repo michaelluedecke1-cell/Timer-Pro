@@ -58,8 +58,6 @@
             margin-bottom: 8px; 
             text-transform: uppercase;
             font-weight: bold;
-            overflow: hidden;
-            text-overflow: ellipsis;
         }
 
         .time-display { 
@@ -85,60 +83,75 @@
         .btn.stop { background: var(--danger); }
 
         #audio-init {
-            background: #334155;
+            background: #22c55e;
             color: white;
             border: none;
-            padding: 10px 20px;
-            border-radius: 8px;
+            padding: 15px 25px;
+            border-radius: 12px;
             margin-bottom: 20px;
+            font-weight: bold;
             cursor: pointer;
+            box-shadow: 0 4px 10px rgba(34, 197, 94, 0.4);
         }
-
-        .footer { margin-top: 30px; font-size: 10px; color: var(--text-dim); text-align: center; }
     </style>
 </head>
 <body>
 
 <h1>TIMER STATION</h1>
-<button id="audio-init">🔊 Sound aktivieren</button>
+<button id="audio-init">🔊 ALARM-SOUND AKTIVIEREN</button>
 
 <div class="container" id="app"></div>
 
-<div class="footer">Tippe auf Namen oder Zeit zum Bearbeiten.<br>Browser-Tab muss offen bleiben.</div>
-
 <script>
-    // Audio Context Initialisierung
     let audioCtx = null;
+    let alarmOsc = null;
+    let alarmGain = null;
+
     document.getElementById('audio-init').addEventListener('click', function() {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         this.style.display = 'none';
     });
 
-    function playAlarm() {
+    function startInfiniteAlarm() {
         if (!audioCtx) return;
         
-        // Erzeuge einen lauten Sirenen-Effekt (3 Wiederholungen)
-        for(let i = 0; i < 3; i++) {
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            
-            osc.type = 'square';
-            osc.frequency.setValueAtTime(880, audioCtx.currentTime + (i * 0.5));
-            osc.frequency.exponentialRampToValueAtTime(440, audioCtx.currentTime + (i * 0.5) + 0.4);
-            
-            gain.gain.setValueAtTime(0.2, audioCtx.currentTime + (i * 0.5));
-            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + (i * 0.5) + 0.4);
-            
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
-            
-            osc.start(audioCtx.currentTime + (i * 0.5));
-            osc.stop(audioCtx.currentTime + (i * 0.5) + 0.5);
+        // Falls schon ein Alarm läuft, erst stoppen
+        stopInfiniteAlarm();
+
+        alarmOsc = audioCtx.createOscillator();
+        alarmGain = audioCtx.createGain();
+        
+        alarmOsc.type = 'triangle'; // Etwas angenehmerer aber lauter Sound
+        alarmOsc.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5
+        
+        // Sirenen-Effekt (auf und ab)
+        alarmOsc.frequency.linearRampToValueAtTime(880, audioCtx.currentTime + 0.5);
+        alarmOsc.frequency.setTargetAtTime(523.25, audioCtx.currentTime + 0.5, 0.5);
+
+        alarmGain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+        
+        alarmOsc.connect(alarmGain);
+        alarmGain.connect(audioCtx.destination);
+        
+        alarmOsc.loop = true; // Funktioniert bei Oszillatoren nicht direkt, daher manueller Stop
+        alarmOsc.start();
+        
+        // Vibration in Schleife
+        if ('vibrate' in navigator) {
+            navigator.vibrate([500, 300, 500, 300, 500]);
         }
-        if ('vibrate' in navigator) navigator.vibrate([200, 100, 200, 100, 500]);
     }
 
-    // Web Worker Script als String für Hintergrund-Betrieb
+    function stopInfiniteAlarm() {
+        if (alarmOsc) {
+            alarmOsc.stop();
+            alarmOsc.disconnect();
+            alarmOsc = null;
+        }
+        if ('vibrate' in navigator) navigator.vibrate(0);
+    }
+
+    // Web Worker für Hintergrund-Präzision
     const workerCode = `
         let intervals = {};
         self.onmessage = function(e) {
@@ -174,8 +187,16 @@
             timers[index].time--;
             if (timers[index].time === 0) {
                 stopTimer(index);
-                playAlarm();
-                setTimeout(() => alert(timers[index].name + " ist abgelaufen!"), 100);
+                render();
+                
+                // Alarm starten
+                startInfiniteAlarm();
+                
+                // Alert blockiert das Skript -> Code danach wird erst nach Klick ausgeführt
+                setTimeout(() => {
+                    alert("⏰ ZEIT ABGELAUFEN: " + timers[index].name);
+                    stopInfiniteAlarm();
+                }, 100);
             }
             render();
         }
