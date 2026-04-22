@@ -67,6 +67,7 @@
         this.style.display = "none";
     });
 
+    // Diese Funktion spielt den Ton ENDLOS ab, bis stopAlarmLoop gerufen wird
     function startAlarmLoop() {
         if (!audioCtx) return;
         if (alarmInterval) clearInterval(alarmInterval);
@@ -75,20 +76,26 @@
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
             osc.type = 'sawtooth';
-            osc.frequency.setValueAtTime(Math.random() > 0.5 ? 1200 : 800, audioCtx.currentTime);
+            // Wechselt die Frequenz für einen Sirenen-Effekt
+            osc.frequency.setValueAtTime(1000, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(500, audioCtx.currentTime + 0.2);
+            
             gain.gain.setValueAtTime(1.0, audioCtx.currentTime);
             gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+            
             osc.connect(gain);
             gain.connect(audioCtx.destination);
             osc.start();
             osc.stop(audioCtx.currentTime + 0.4);
             if ('vibrate' in navigator) navigator.vibrate(200);
-        }, 350);
+        }, 400); // Wiederholt sich alle 0,4 Sekunden
     }
 
     function stopAlarmLoop() {
-        clearInterval(alarmInterval);
-        alarmInterval = null;
+        if (alarmInterval) {
+            clearInterval(alarmInterval);
+            alarmInterval = null;
+        }
     }
 
     const workerCode = `
@@ -125,10 +132,12 @@
                 stopTimer(idx);
                 timers[idx].time = timers[idx].initial;
                 render();
-                startAlarmLoop();
+                
+                startAlarmLoop(); // Startet den unendlichen Alarm
+                
                 setTimeout(() => {
-                    alert(timers[idx].name);
-                    stopAlarmLoop();
+                    alert(timers[idx].name); // Zeigt den Namen
+                    stopAlarmLoop(); // Stoppt erst nach Klick auf OK
                 }, 100);
             }
             render();
