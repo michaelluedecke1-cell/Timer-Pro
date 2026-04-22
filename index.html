@@ -12,18 +12,13 @@
             --accent: #22c55e;
             --danger: #ef4444;
             --text-main: #f8fafc;
-            --text-dim: #94a3b8;
         }
 
         body { 
-            background-color: var(--bg-color); 
-            color: var(--text-main); 
-            font-family: -apple-system, system-ui, sans-serif; 
-            margin: 0; padding: 20px;
+            background-color: var(--bg-color); color: var(--text-main); 
+            font-family: sans-serif; margin: 0; padding: 20px;
             display: flex; flex-direction: column; align-items: center;
         }
-
-        h1 { font-size: 24px; margin-bottom: 15px; }
 
         .container {
             display: grid; grid-template-columns: repeat(2, 1fr);
@@ -35,10 +30,10 @@
             padding: 20px; text-align: center; border: 2px solid transparent;
         }
 
-        .timer-box.running { border-color: var(--accent); box-shadow: 0 0 10px rgba(34, 197, 94, 0.2); }
+        .timer-box.running { border-color: var(--accent); }
 
-        .label { color: var(--text-dim); font-size: 13px; margin-bottom: 5px; font-weight: bold; cursor: pointer; }
-        .time-display { font-size: 30px; font-family: monospace; font-weight: bold; color: var(--accent); margin-bottom: 12px; cursor: pointer; }
+        .label { color: #94a3b8; font-size: 13px; margin-bottom: 5px; font-weight: bold; }
+        .time-display { font-size: 30px; font-family: monospace; font-weight: bold; color: var(--accent); margin-bottom: 12px; }
 
         .btn { 
             background: var(--accent); border: none; color: #fff; 
@@ -49,7 +44,7 @@
         .btn.stop { background: var(--danger); }
 
         #audio-init {
-            background: var(--accent); color: white; border: none;
+            background: #f59e0b; color: white; border: none;
             padding: 15px; border-radius: 12px; margin-bottom: 20px;
             font-weight: bold; width: 100%; max-width: 400px; cursor: pointer;
         }
@@ -58,58 +53,56 @@
 <body>
 
 <h1>TIMER STATION</h1>
-<button id="audio-init">🔊 SOUND AKTIVIEREN & START</button>
+<button id="audio-init">⚠️ SOUND AKTIVIEREN (VOR START)</button>
 
 <div class="container" id="app"></div>
 
 <script>
     let audioCtx = null;
-    let alarmInterval = null;
+    let alarmActive = false;
     let running = {};
 
-    // Audio Initialisierung
+    // Sound-System initialisieren
     document.getElementById('audio-init').addEventListener('click', function() {
-        if (!audioCtx) {
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            // Erzeugt eine kurze Stille, um den Audio-Kanal zu öffnen
-            const buffer = audioCtx.createBuffer(1, 1, 22050);
-            const source = audioCtx.createBufferSource();
-            source.buffer = buffer;
-            source.connect(audioCtx.destination);
-            source.start(0);
-        }
-        this.style.display = 'none';
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        this.style.backgroundColor = "#22c55e";
+        this.innerText = "✅ SOUND BEREIT";
+        // Kurzer Test-Ton
+        const osc = audioCtx.createOscillator();
+        osc.connect(audioCtx.destination);
+        osc.start(); osc.stop(audioCtx.currentTime + 0.1);
     });
 
-    function startAlarm() {
+    // DER ENDLOS-ALARM
+    async function playHeavyAlarm() {
         if (!audioCtx) return;
-        if (audioCtx.state === 'suspended') audioCtx.resume();
+        alarmActive = true;
 
-        const playTone = () => {
+        // Loop, der so lange läuft, bis alarmActive = false
+        while (alarmActive) {
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
-            osc.type = 'square'; 
-            osc.frequency.setValueAtTime(880, audioCtx.currentTime);
-            osc.frequency.exponentialRampToValueAtTime(440, audioCtx.currentTime + 0.4);
-            gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+            
+            osc.type = 'square'; // Aggressiver Sound
+            osc.frequency.setValueAtTime(900, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(400, audioCtx.currentTime + 0.3);
+            
+            gain.gain.setValueAtTime(1.0, audioCtx.currentTime); // Volle Lautstärke
+            gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.4);
+            
             osc.connect(gain);
             gain.connect(audioCtx.destination);
+            
             osc.start();
             osc.stop(audioCtx.currentTime + 0.5);
-        };
-
-        playTone();
-        alarmInterval = setInterval(playTone, 600);
-        if ('vibrate' in navigator) navigator.vibrate([500, 200, 500, 200, 500]);
+            
+            if ('vibrate' in navigator) navigator.vibrate(500);
+            
+            // Warte 0.6 Sekunden bis zum nächsten Piep
+            await new Promise(r => setTimeout(r, 600));
+        }
     }
 
-    function stopAlarm() {
-        clearInterval(alarmInterval);
-        if ('vibrate' in navigator) navigator.vibrate(0);
-    }
-
-    // Web Worker Code
     const workerCode = `
         let activeTimers = {};
         self.onmessage = function(e) {
@@ -142,14 +135,17 @@
             timers[idx].time--;
             if (timers[idx].time === 0) {
                 stopTimer(idx);
-                startAlarm();
-                timers[idx].time = timers[idx].initial; // Zurücksetzen für das Display
+                timers[idx].time = timers[idx].initial;
                 render();
                 
-                // Kurze Verzögerung für den Alert
+                // Starte den unendlichen Loop
+                playHeavyAlarm();
+                
+                // Alert Fenster
                 setTimeout(() => {
-                    alert("⏰ ZEIT ABGELAUFEN: " + timers[idx].name);
-                    stopAlarm();
+                    alert("⏰ ALARM: " + timers[idx].name);
+                    alarmActive = false; // Stoppt den Sound-Loop nach Klick auf OK
+                    if ('vibrate' in navigator) navigator.vibrate(0);
                 }, 100);
             }
             render();
@@ -183,7 +179,7 @@
             stopTimer(i);
             timers[i].time = timers[i].initial;
         } else {
-            if (!audioCtx) alert("Bitte zuerst oben den Sound aktivieren!");
+            if (!audioCtx) { alert("Bitte erst oben auf den orangenen Button klicken!"); return; }
             running[i] = true;
             timerWorker.postMessage({ index: i, cmd: 'start' });
         }
@@ -193,26 +189,26 @@
     function stopTimer(i) {
         running[i] = false;
         timerWorker.postMessage({ index: i, cmd: 'stop' });
+        render();
     }
 
     function editTime(i) {
         let m = prompt("Minuten für " + timers[i].name + ":", timers[i].initial / 60);
-        if (m !== null && m !== "") {
-            const val = parseInt(m) * 60;
-            timers[i].initial = val;
-            timers[i].time = val;
-            save();
+        if (m) {
+            timers[i].initial = parseInt(m) * 60;
+            timers[i].time = timers[i].initial;
+            localStorage.setItem('savedTimers', JSON.stringify(timers));
             render();
         }
     }
 
     function editName(i) {
         let n = prompt("Name:", timers[i].name);
-        if (n) { timers[i].name = n; save(); render(); }
-    }
-
-    function save() {
-        localStorage.setItem('savedTimers', JSON.stringify(timers));
+        if (n) { 
+            timers[i].name = n; 
+            localStorage.setItem('savedTimers', JSON.stringify(timers));
+            render(); 
+        }
     }
 
     render();
