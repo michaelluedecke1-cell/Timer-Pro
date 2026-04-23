@@ -31,8 +31,8 @@ self.addEventListener('message', (event) => {
 function showNotification(timerName) {
   const options = {
     body: `Zeit abgelaufen!`,
-    icon: 'https://cdn-icons-png.flaticon.com/512/2784/2784459.png',
-    badge: 'https://cdn-icons-png.flaticon.com/512/2784/2784459.png',
+    icon: 'https://cdn-icons-png.flaticon.com/128/2699/2699194.png',
+    badge: 'https://cdn-icons-png.flaticon.com/128/2699/2699194.png',
     vibrate: [200, 100, 200],
     tag: 'timer-done',
     renotify: true
