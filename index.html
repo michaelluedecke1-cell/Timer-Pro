@@ -4,165 +4,157 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Timer Station</title>
+    
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2972/2972531.png">
+
+    <title>Timer Station Pro</title>
     <style>
-        :root { --bg: #0f172a; --card: #1e293b; --green: #22c55e; --red: #ef4444; --text: #f8fafc; }
-        body { background: var(--bg); color: var(--text); font-family: sans-serif; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
-        .container { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: 100%; max-width: 400px; }
-        .timer-box { background: var(--card); border-radius: 15px; padding: 15px; text-align: center; border: 2px solid transparent; }
-        .timer-box.running { border-color: var(--green); background: #1e3a2f; }
-        .label { color: #94a3b8; font-size: 13px; font-weight: bold; cursor: pointer; margin-bottom: 5px; }
-        .time-display { font-size: 32px; font-family: monospace; font-weight: bold; color: var(--green); margin-bottom: 10px; cursor: pointer; }
-        .btn { background: var(--green); border: none; color: #fff; padding: 12px; border-radius: 10px; width: 100%; font-size: 14px; font-weight: bold; cursor: pointer; }
-        #audio-init { background: #f59e0b; color: white; border: none; padding: 20px; border-radius: 12px; margin-bottom: 20px; font-weight: bold; width: 100%; max-width: 400px; cursor: pointer; font-size: 18px; }
-        #alarm-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #b91c1c; z-index: 9999; flex-direction: column; justify-content: center; align-items: center; }
-        #alarm-overlay h2 { font-size: 45px; color: white; margin-bottom: 30px; text-align: center; }
+        :root { --bg: #000; --card: #121212; --accent: #32d74b; --stop: #ff453a; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif; 
+            background: var(--bg); color: #fff; margin: 0; 
+            padding: env(safe-area-inset-top) 0 20px 0;
+            display: flex; flex-direction: column; align-items: center; 
+            min-height: 100vh;
+        }
+        .header { width: 100%; display: flex; justify-content: flex-end; padding: 10px 20px; box-sizing: border-box; }
+        #fs-btn { background: #222; border: 1px solid #444; color: #888; border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 0.7rem; font-weight: bold; }
+        h2 { color: var(--accent); letter-spacing: 2px; margin: 10px 0 30px 0; font-weight: 800; text-align: center; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; width: 90%; max-width: 480px; }
+        .box { background: var(--card); padding: 20px 10px; border-radius: 24px; border: 1px solid #222; text-align: center; }
+        .name-input { background: transparent; border: none; color: #666; font-size: 0.75rem; text-align: center; width: 85%; margin-bottom: 8px; outline: none; }
+        .time-input { background: transparent; border: none; color: #fff; font-size: 2.4rem; font-weight: 700; width: 100%; text-align: center; font-family: monospace; outline: none; }
+        button.main-btn { width: 85%; margin-top: 15px; padding: 14px; border-radius: 14px; border: none; font-weight: 800; cursor: pointer; font-size: 0.9rem; }
+        .btn-start { background: var(--accent); color: #000; }
+        .btn-stop { background: var(--stop); color: #fff; animation: pulse 1s infinite; }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255, 69, 58, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(255, 69, 58, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 69, 58, 0); } }
     </style>
 </head>
 <body>
+    <div class="header"><button id="fs-btn">FULLSCREEN</button></div>
+    <h2>TIMER STATION</h2>
+    <div class="grid" id="timerGrid"></div>
 
-<h1>TIMER STATION</h1>
-<button id="audio-init">🔊 ALARM-SYSTEM SCHARF SCHALTEN</button>
-
-<div class="container" id="app"></div>
-
-<div id="alarm-overlay">
-    <h2 id="alarm-name">FERTIG</h2>
-    <button class="btn" style="width: 250px; height: 100px; font-size: 24px; background: white; color: black; border: 4px solid black;" onclick="stopSirene()">SIRENE AUS</button>
-</div>
-
-<script>
-    let audioCtx = null;
-    let sireneActive = false;
-    let timers = [];
-    let endTimes = {}; 
-
-    // Audio-Initialisierung OHNE Dauerrauschen
-    document.getElementById('audio-init').addEventListener('click', function() {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        // Nur ein ganz kurzer Klick-Ton zur Aktivierung
-        const o = audioCtx.createOscillator();
-        const g = audioCtx.createGain();
-        g.gain.value = 0.1;
-        o.connect(g);
-        g.connect(audioCtx.destination);
-        o.start(); o.stop(audioCtx.currentTime + 0.05);
-        
-        if ('vibrate' in navigator) navigator.vibrate(50);
-        this.style.display = "none";
-    });
-
-    // Die Sirene (nur wenn Zeit abgelaufen ist)
-    async function startSirene() {
-        if (!audioCtx) return;
-        sireneActive = true;
-        if (audioCtx.state === 'suspended') audioCtx.resume();
-
-        while (sireneActive) {
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            osc.type = 'sawtooth';
-            let freq = (Math.floor(Date.now() / 200) % 2 === 0) ? 1500 : 800;
-            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-            gain.gain.setValueAtTime(1.0, audioCtx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.25);
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
-            osc.start(); osc.stop(audioCtx.currentTime + 0.3);
-            if ('vibrate' in navigator) navigator.vibrate(300);
-            await new Promise(r => setTimeout(r, 250));
+    <script>
+        // Service Worker Registrierung mit verbesserter Aktivierung
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js').then(reg => {
+                    console.log('SW registriert');
+                }).catch(err => console.log('SW Fehler:', err));
+            });
         }
-    }
 
-    function stopSirene() {
-        sireneActive = false;
-        document.getElementById('alarm-overlay').style.display = "none";
-        if ('vibrate' in navigator) navigator.vibrate(0);
-    }
-
-    function tick() {
-        const now = Date.now();
-        let needsRender = false;
-
-        timers.forEach((t, i) => {
-            if (endTimes[i]) {
-                const diff = endTimes[i] - now;
-                if (diff <= 0) {
-                    endTimes[i] = null;
-                    t.time = t.initial;
-                    document.getElementById('alarm-name').innerText = t.name;
-                    document.getElementById('alarm-overlay').style.display = "flex";
-                    startSirene();
-                    needsRender = true;
-                } else {
-                    const newSec = Math.ceil(diff / 1000);
-                    if (t.time !== newSec) {
-                        t.time = newSec;
-                        needsRender = true;
-                    }
-                }
+        const fsBtn = document.getElementById('fs-btn');
+        fsBtn.onclick = () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(() => {
+                    alert("Tipp: Nutze 'Zum Home-Bildschirm hinzufügen' für echtes Fullscreen.");
+                });
+                fsBtn.innerText = "EXIT";
+            } else {
+                document.exitFullscreen();
+                fsBtn.innerText = "FULLSCREEN";
             }
-        });
-        if (needsRender) render();
-    }
+        };
 
-    setInterval(tick, 200);
+        let savedData = JSON.parse(localStorage.getItem('timerConfig')) || [
+            {id: 1, name: "Timer 1", sec: 60}, {id: 2, name: "Timer 2", sec: 300},
+            {id: 3, name: "Timer 3", sec: 600}, {id: 4, name: "Timer 4", sec: 1200},
+            {id: 5, name: "Timer 5", sec: 1800}, {id: 6, name: "Timer 6", sec: 3600}
+        ];
 
-    const defaultData = [
-        { name: "Timer 1", time: 60, initial: 60 }, { name: "Timer 2", time: 300, initial: 300 },
-        { name: "Timer 3", time: 600, initial: 600 }, { name: "Timer 4", time: 900, initial: 900 },
-        { name: "Timer 5", time: 1200, initial: 1200 }, { name: "Timer 6", time: 1800, initial: 1800 }
-    ];
+        const grid = document.getElementById('timerGrid');
+        const activeIntervals = {};
 
-    timers = JSON.parse(localStorage.getItem('myTimers')) || defaultData;
-
-    function render() {
-        const app = document.getElementById('app');
-        app.innerHTML = '';
-        timers.forEach((t, i) => {
-            const isRunning = !!endTimes[i];
-            const div = document.createElement('div');
-            div.className = `timer-box ${isRunning ? 'running' : ''}`;
-            div.innerHTML = `
-                <div class="label" onclick="editName(${i})">${t.name}</div>
-                <div class="time-display" onclick="editTime(${i})">${Math.floor(t.time/60)}:${(t.time%60).toString().padStart(2, '0')}</div>
-                <button class="btn" onclick="toggle(${i})" style="background:${isRunning ? '#ef4444' : '#22c55e'}">
-                    ${isRunning ? 'STOP' : 'START'}
-                </button>
+        savedData.forEach((conf, idx) => {
+            const box = document.createElement('div');
+            box.className = 'box';
+            box.innerHTML = `
+                <input class="name-input" value="${conf.name}">
+                <input class="time-input" value="${formatTime(conf.sec)}">
+                <button class="main-btn btn-start">START</button>
             `;
-            app.appendChild(div);
+            grid.appendChild(box);
+
+            const btn = box.querySelector('button');
+            const timeInp = box.querySelector('.time-input');
+            const nameInp = box.querySelector('.name-input');
+            let timerId = null;
+
+            nameInp.oninput = () => {
+                savedData[idx].name = nameInp.value;
+                localStorage.setItem('timerConfig', JSON.stringify(savedData));
+            };
+
+            btn.onclick = async () => {
+                if (timerId || activeIntervals[idx]) {
+                    clearInterval(timerId);
+                    timerId = null;
+                    if (activeIntervals[idx]) { clearInterval(activeIntervals[idx]); delete activeIntervals[idx]; }
+                    btn.innerText = "START";
+                    btn.className = "main-btn btn-start";
+                    timeInp.value = formatTime(conf.sec);
+                    return;
+                }
+
+                if ("Notification" in window) await Notification.requestPermission();
+                
+                let p = timeInp.value.split(':');
+                let totalSec = p.length === 2 ? (parseInt(p[0])*60 + (parseInt(p[1]) || 0)) : parseInt(p[0])*60;
+                let endTime = Date.now() + (totalSec * 1000);
+
+                // Nachricht an Service Worker für Hintergrund-Benachrichtigung
+                if (navigator.serviceWorker.controller) {
+                    navigator.serviceWorker.controller.postMessage({
+                        type: 'START_TIMER', ms: totalSec * 1000, name: nameInp.value
+                    });
+                }
+
+                btn.innerText = "STOP";
+                btn.className = "main-btn btn-stop";
+
+                timerId = setInterval(() => {
+                    let diff = Math.round((endTime - Date.now()) / 1000);
+                    if (diff <= 0) {
+                        clearInterval(timerId);
+                        timerId = null;
+                        timeInp.value = "00:00";
+                        startAlarmSound(idx);
+                    } else {
+                        timeInp.value = formatTime(diff);
+                    }
+                }, 1000);
+            };
         });
-    }
 
-    function toggle(i) {
-        if (endTimes[i]) {
-            endTimes[i] = null;
-            timers[i].time = timers[i].initial;
-        } else {
-            if (!audioCtx) { alert("Bitte erst oben SOUND AKTIVIEREN!"); return; }
-            endTimes[i] = Date.now() + (timers[i].time * 1000);
+        function startAlarmSound(index) {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const play = () => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(880, ctx.currentTime);
+                gain.gain.setValueAtTime(0.4, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start();
+                osc.stop(ctx.currentTime + 0.3);
+            };
+            play();
+            activeIntervals[index] = setInterval(play, 600);
         }
-        render();
-    }
 
-    function editTime(i) {
-        if (endTimes[i]) return;
-        let m = prompt("Minuten für " + timers[i].name + ":", timers[i].initial / 60);
-        if (m) {
-            let val = parseInt(m) * 60;
-            timers[i].initial = val;
-            timers[i].time = val;
-            save(); render();
+        function formatTime(s) {
+            let m = Math.floor(s/60), sec = s%60;
+            return `${m.toString().padStart(2,'0')}:${sec.toString().padStart(2,'0')}`;
         }
-    }
-
-    function editName(i) {
-        let n = prompt("Name:", timers[i].name);
-        if (n) { timers[i].name = n; save(); render(); }
-    }
-
-    function save() { localStorage.setItem('myTimers', JSON.stringify(timers)); }
-    render();
-</script>
+    </script>
 </body>
 </html>
+
